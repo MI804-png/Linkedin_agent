@@ -83,14 +83,17 @@ class LinkedInAutoApplyBot:
         if self._is_authenticated(page):
             return
 
-        # Session expired — delete stale state file so next manual run rebuilds it
+        # Session expired — delete stale state file and re-login
         if self.config.paths.browser_state_path.exists():
             self.config.paths.browser_state_path.unlink()
+
+        if self.config.settings.headless:
             raise RuntimeError(
                 "LinkedIn session expired. Run once manually (without --headless) to log in again:\n"
                 "  d:\\cv_portofolio\\.venv\\Scripts\\python.exe main.py --limit 1\n"
                 "Then the scheduled task will resume automatically."
             )
+        # Non-headless: fall through to login form below
 
 
         # Accept cookie consent if present (it blocks form rendering)
@@ -116,6 +119,10 @@ class LinkedInAutoApplyBot:
             pass
 
         page.wait_for_timeout(2000)
+
+        # User may have clicked a saved-account tile — check if already logged in
+        if self._is_authenticated(page):
+            return
 
         email_ok = self._human_type_first(
             page,
