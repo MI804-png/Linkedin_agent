@@ -89,6 +89,11 @@ class LinkedInAutoApplyBot:
     def _login(self, page) -> None:
         page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded")
         page.wait_for_timeout(2000)
+        # Wait for any post-load redirects to settle (LinkedIn may redirect /feed/ → /mynetwork/grow/)
+        try:
+            page.wait_for_load_state("networkidle", timeout=6000)
+        except Exception:
+            pass
         # Already logged in if any authenticated LinkedIn page is shown
         if self._is_authenticated(page):
             return
@@ -124,8 +129,13 @@ class LinkedInAutoApplyBot:
             pass
 
         page.wait_for_timeout(2000)
+        # Wait for redirect chain to complete (e.g. /login → /mynetwork/grow/ when session still valid)
+        try:
+            page.wait_for_load_state("networkidle", timeout=6000)
+        except Exception:
+            pass
 
-        # User may have clicked a saved-account tile — check if already logged in
+        # User may have clicked a saved-account tile / session still active — check if already logged in
         if self._is_authenticated(page):
             return
 
@@ -736,8 +746,10 @@ class LinkedInAutoApplyBot:
         return any(entry.get("job_id") == job_id for entry in self.applied_jobs)
 
     def _record_job(self, job: dict[str, Any]) -> None:
-        # Only persist true applied outcomes to dedupe future runs.
-        if job.get("status") not in {"submitted", "manual_required"}:
+        # Persist all terminal outcomes so the same job is never retried.
+        # "failed" jobs are recorded so repeat runs skip them instead of
+        # hitting the same broken form every time.
+        if job.get("status") not in {"submitted", "manual_required", "failed"}:
             return
         self.applied_jobs.append(job)
         self._write_json(self.config.paths.applied_log, self.applied_jobs)
