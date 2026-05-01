@@ -52,7 +52,7 @@ lines += [
     "# Verify",
     f'SIZE=$(ssh $OPTS ubuntu@$IP "wc -c < {DEST}")',
     'echo "Uploaded $SIZE bytes"',
-    f'ssh $OPTS ubuntu@$IP "python3 -c \\"import json; d=json.load(open(\\\"cv_portofolio/linkedin_bot/playwright_state.json\\\")); print(\'Cookies:\', len(d.get(\'cookies\',[])), \'Origins:\', len(d.get(\'origins\',[])))\\""',
+    'if [ "$SIZE" -gt 1000 ] 2>/dev/null; then echo "Session file looks good!"; else echo "WARNING: file may be empty"; fi',
     "",
     "echo ''",
     "echo 'Session uploaded! Now run a test:'",
