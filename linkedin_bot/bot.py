@@ -44,24 +44,14 @@ class LinkedInAutoApplyBot:
             run_headless = False  # Must show browser to pass LinkedIn anti-bot on first login
 
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=run_headless)
-            context = browser.new_context(
-                storage_state=str(self.config.paths.browser_state_path)
-                if self.config.paths.browser_state_path.exists()
-                else None
-            )
-            page = context.new_page()
-
             try:
-                self._login(page)
-                # Reset daily state cursor unless resuming
-                if not self.resume:
-                    self.state = {"combo_index": 0, "job_offset": 0}
-                self._process_search_combinations(page)
-            finally:
-                context.storage_state(path=str(self.config.paths.browser_state_path))
-                context.close()
-                browser.close()
+                self._run_once(p, headless=run_headless)
+            except RuntimeError as exc:
+                # If LinkedIn blocks relogin in headless mode, retry once visibly.
+                if run_headless and "headless relogin was blocked" in str(exc).lower():
+                    self._run_once(p, headless=False)
+                else:
+                    raise
 
         end = datetime.now(timezone.utc).isoformat()
 
@@ -76,6 +66,26 @@ class LinkedInAutoApplyBot:
         self._append_run_history(run_result)
         return run_result
 
+    def _run_once(self, playwright, *, headless: bool) -> None:
+        browser = playwright.chromium.launch(headless=headless)
+        context = browser.new_context(
+            storage_state=str(self.config.paths.browser_state_path)
+            if self.config.paths.browser_state_path.exists()
+            else None
+        )
+        page = context.new_page()
+
+        try:
+            self._login(page)
+            # Reset daily state cursor unless resuming
+            if not self.resume:
+                self.state = {"combo_index": 0, "job_offset": 0}
+            self._process_search_combinations(page)
+        finally:
+            context.storage_state(path=str(self.config.paths.browser_state_path))
+            context.close()
+            browser.close()
+
     def _login(self, page) -> None:
         page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded")
         page.wait_for_timeout(2000)
@@ -84,15 +94,10 @@ class LinkedInAutoApplyBot:
             return
 
         # Session expired — delete stale state file and re-login
+        expired_in_headless = False
         if self.config.paths.browser_state_path.exists():
             self.config.paths.browser_state_path.unlink()
-
-        if self.config.settings.headless:
-            raise RuntimeError(
-                "LinkedIn session expired. Run once manually (without --headless) to log in again:\n"
-                "  d:\\cv_portofolio\\.venv\\Scripts\\python.exe main.py --limit 1\n"
-                "Then the scheduled task will resume automatically."
-            )
+            expired_in_headless = bool(self.config.settings.headless)
         # Non-headless: fall through to login form below
 
 
@@ -140,6 +145,13 @@ class LinkedInAutoApplyBot:
                 self._write_state()
                 raise RuntimeError(
                     f"LinkedIn security challenge (2FA/CAPTCHA) detected at {page.url}. Resolve manually and rerun with --resume."
+                )
+            if expired_in_headless:
+                raise RuntimeError(
+                    "LinkedIn session expired and headless relogin was blocked by LinkedIn. "
+                    "Run once manually (without --headless) to refresh session:\n"
+                    "  d:\\cv_portofolio\\.venv\\Scripts\\python.exe main.py --limit 1\n"
+                    "Then scheduled/background runs will resume automatically."
                 )
             debug_path = self._save_debug_artifacts(page, "login_form_missing")
             raise RuntimeError(
@@ -279,6 +291,12 @@ class LinkedInAutoApplyBot:
 
                 result = self._process_single_job(page, job_url, job_id, location)
                 self._record_job(result)
+                if hasattr(self, '_on_job_result') and callable(self._on_job_result):
+                    try:
+                        self._on_job_result(result)
+                    except Exception as _cb_exc:
+                        import sys
+                        print(f"[_on_job_result error] {_cb_exc}", file=sys.stderr)
 
         self.state["combo_index"] = 0
         self.state["job_offset"] = 0
@@ -296,7 +314,7 @@ class LinkedInAutoApplyBot:
 
         page.goto(search_url, wait_until="domcontentloaded")
         self._human_pause()
-        self._progressive_scroll(page)
+        self._progressive_scroll(page, iterations=10)
 
         # Broad anchor match — job cards use multiple link patterns across LinkedIn versions
         try:
@@ -351,12 +369,13 @@ class LinkedInAutoApplyBot:
                         self.stats["dry_run"] += 1
                         return self._job_record(job_id, job_url, title, company, place, "dry_run", "Easy Apply found")
 
-                    if self._run_easy_apply(page, location):
+                    ok, fail_reason = self._run_easy_apply(page, location)
+                    if ok:
                         self.stats["submitted"] += 1
                         return self._job_record(job_id, job_url, title, company, place, "submitted", "Easy Apply submitted")
 
                     self.stats["failures"] += 1
-                    return self._job_record(job_id, job_url, title, company, place, "failed", "Easy Apply flow failed")
+                    return self._job_record(job_id, job_url, title, company, place, "failed", fail_reason or "Easy Apply flow failed")
 
                 external_url = self._handle_external_apply(page)
                 self.stats["manual_required"] += 1
@@ -384,7 +403,7 @@ class LinkedInAutoApplyBot:
         self.stats["failures"] += 1
         return self._job_record(job_id, job_url, "", "", "", "failed", "Unknown failure")
 
-    def _run_easy_apply(self, page, location: str) -> bool:
+    def _run_easy_apply(self, page, location: str) -> tuple[bool, str]:
         # Try to get the direct URL for the Easy Apply flow
         apply_url = self._get_easy_apply_url(page)
         if apply_url:
@@ -393,7 +412,7 @@ class LinkedInAutoApplyBot:
         else:
             apply_btn = self._find_apply_button(page)
             if not apply_btn:
-                return False
+                return False, "No apply button found"
             apply_btn.click()
             self._human_pause()
 
@@ -402,7 +421,7 @@ class LinkedInAutoApplyBot:
             file_input.set_input_files(str(self.config.paths.cv_path))
             self._human_pause()
 
-        for _ in range(10):
+        for step in range(10):
             self._autofill_visible_fields(page, location)
 
             submit_btn = page.query_selector("button[aria-label*='Submit application'], button:has-text('Submit application')")
@@ -410,19 +429,42 @@ class LinkedInAutoApplyBot:
                 submit_btn.click()
                 self._human_pause()
                 self._close_apply_modal(page)
-                return True
+                return True, ""
 
             next_btn = page.query_selector("button[aria-label='Continue to next step'], button:has-text('Next'), button:has-text('Review')")
             if not next_btn:
-                break
+                # Check for validation errors on the page
+                errors = page.query_selector_all("[data-test-form-element-error-message], .artdeco-inline-feedback--error")
+                error_texts = []
+                for err in errors[:5]:
+                    try:
+                        error_texts.append((err.inner_text() or "").strip())
+                    except Exception:
+                        pass
+                reason = f"Stuck on step {step+1}"
+                if error_texts:
+                    reason += f" — validation errors: {'; '.join(error_texts)}"
+                reason += f" | URL: {page.url}"
+                # Capture debug artefacts for offline diagnosis
+                ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+                log_dir = self.config.paths.base_dir.parent.parent / "linkedin_bot" / "logs"
+                try:
+                    page.screenshot(path=str(log_dir / f"easyfail_step{step+1}_{ts}.png"))
+                    (log_dir / f"easyfail_step{step+1}_{ts}.html").write_text(page.content(), encoding="utf-8")
+                except Exception:
+                    pass
+                self._dismiss_apply_flow(page)
+                return False, reason
             next_btn.click()
             self._human_pause()
 
         self._dismiss_apply_flow(page)
-        return False
+        return False, "Exceeded max steps (10)"
 
     def _autofill_visible_fields(self, page, location: str) -> None:
         profile = self.config.profile
+        work_auth = profile.work_authorization_hungary if "hungary" in location.lower() else profile.work_authorization_italy
+        salary = profile.salary_hungary if "hungary" in location.lower() else profile.salary_italy
 
         fill_map = {
             "first name": profile.full_name.split(" ")[0],
@@ -431,12 +473,13 @@ class LinkedInAutoApplyBot:
             "name": profile.full_name,
             "email": profile.email,
             "phone": profile.phone,
+            "mobile": profile.phone,
             "city": profile.location,
             "location": profile.location,
             "experience": profile.total_experience_years,
-            "salary": profile.salary_hungary if "hungary" in location.lower() else profile.salary_italy,
-            "authorization": profile.work_authorization_hungary if "hungary" in location.lower() else profile.work_authorization_italy,
-            "work permit": profile.work_authorization_hungary if "hungary" in location.lower() else profile.work_authorization_italy,
+            "salary": salary,
+            "authorization": work_auth,
+            "work permit": work_auth,
             "graduation": profile.graduation_year,
         }
 
@@ -444,6 +487,7 @@ class LinkedInAutoApplyBot:
             inputs = page.query_selector_all("input, textarea")
         except Exception:
             inputs = []
+
         for input_el in inputs:
             input_type = (input_el.get_attribute("type") or "text").lower()
             if input_type in {"hidden", "submit", "button", "checkbox", "radio", "file"}:
@@ -453,23 +497,50 @@ class LinkedInAutoApplyBot:
             if value:
                 continue
 
+            field_id = input_el.get_attribute("id") or ""
+            label_text = ""
+            try:
+                if field_id:
+                    lbl = page.query_selector(f"label[for='{field_id}']")
+                    if lbl:
+                        label_text = (lbl.inner_text() or "").strip()
+                if not label_text:
+                    parent_label = input_el.query_selector("xpath=ancestor::label[1]")
+                    if parent_label:
+                        label_text = (parent_label.inner_text() or "").strip()
+                if not label_text:
+                    parent_fieldset = input_el.query_selector("xpath=ancestor::fieldset[1]")
+                    if parent_fieldset:
+                        label_text = (parent_fieldset.inner_text() or "").strip().split("\n")[0]
+            except Exception:
+                label_text = ""
+
             metadata = " ".join(
                 filter(
                     None,
                     [
                         input_el.get_attribute("name"),
-                        input_el.get_attribute("id"),
+                        field_id,
                         input_el.get_attribute("placeholder"),
                         input_el.get_attribute("aria-label"),
+                        label_text,
                     ],
                 )
             ).lower()
 
             chosen = None
             for key, mapped in fill_map.items():
-                if key in metadata:
-                    chosen = mapped
+                if key in metadata and mapped:
+                    chosen = str(mapped)
                     break
+
+            # Fallback for required numeric experience questions like
+            # "How many years ..." when LinkedIn omits useful input attributes.
+            if not chosen and input_type == "number":
+                if "year" in metadata or "experience" in metadata:
+                    chosen = str(profile.total_experience_years or "0")
+                else:
+                    chosen = "0"
 
             if chosen:
                 try:
@@ -477,6 +548,150 @@ class LinkedInAutoApplyBot:
                     self._human_pause(0.2, 0.6)
                 except Exception:
                     continue
+
+        # Fill empty selects with best-effort answers.
+        try:
+            selects = page.query_selector_all("select")
+        except Exception:
+            selects = []
+        for sel in selects:
+            try:
+                current = (sel.input_value() or "").strip().lower()
+            except Exception:
+                current = ""
+            if current:
+                continue
+
+            try:
+                meta = " ".join(
+                    filter(
+                        None,
+                        [
+                            sel.get_attribute("name"),
+                            sel.get_attribute("id"),
+                            sel.get_attribute("aria-label"),
+                            (sel.query_selector("xpath=ancestor::fieldset[1]").inner_text() if sel.query_selector("xpath=ancestor::fieldset[1]") else ""),
+                        ],
+                    )
+                ).lower()
+            except Exception:
+                meta = ""
+
+            pick_value = None
+            try:
+                options = sel.query_selector_all("option")
+            except Exception:
+                options = []
+
+            non_empty = []
+            for opt in options:
+                try:
+                    val = (opt.get_attribute("value") or "").strip()
+                    txt = (opt.inner_text() or "").strip().lower()
+                except Exception:
+                    continue
+                if not val:
+                    continue
+                if txt in {"select", "choose", "please select"}:
+                    continue
+                non_empty.append((val, txt))
+
+            if not non_empty:
+                continue
+
+            if "authorization" in meta or "work permit" in meta or "eligible" in meta:
+                target_yes = (work_auth or "yes").strip().lower().startswith("y")
+                for val, txt in non_empty:
+                    if target_yes and "yes" in txt:
+                        pick_value = val
+                        break
+                    if not target_yes and "no" in txt:
+                        pick_value = val
+                        break
+            elif "language" in meta and "hungarian" in meta:
+                for val, txt in non_empty:
+                    if "none" in txt:
+                        pick_value = val
+                        break
+
+            if not pick_value:
+                pick_value = non_empty[0][0]
+
+            try:
+                sel.select_option(value=pick_value)
+                self._human_pause(0.2, 0.6)
+            except Exception:
+                continue
+
+        # Fill unanswered radio groups.
+        try:
+            radios = page.query_selector_all("input[type='radio']")
+        except Exception:
+            radios = []
+
+        groups: dict[str, list[Any]] = {}
+        for radio in radios:
+            name = (radio.get_attribute("name") or "").strip()
+            if not name:
+                continue
+            groups.setdefault(name, []).append(radio)
+
+        for _, group in groups.items():
+            try:
+                if any(r.is_checked() for r in group):
+                    continue
+            except Exception:
+                pass
+
+            prompt = ""
+            try:
+                prompt = (group[0].query_selector("xpath=ancestor::fieldset[1]").inner_text() or "").lower()
+            except Exception:
+                prompt = ""
+
+            choose_yes = None
+            if any(token in prompt for token in ["authorized", "work permit", "eligible to work"]):
+                choose_yes = (work_auth or "yes").strip().lower().startswith("y")
+            elif any(token in prompt for token in ["commut", "on-site", "onsite", "relocat", "travel"]):
+                choose_yes = True
+
+            chosen_radio = None
+            for radio in group:
+                try:
+                    rid = radio.get_attribute("id") or ""
+                    lbl = page.query_selector(f"label[for='{rid}']") if rid else None
+                    txt = ((lbl.inner_text() if lbl else "") or "").strip().lower()
+                except Exception:
+                    txt = ""
+
+                if choose_yes is True and "yes" in txt:
+                    chosen_radio = radio
+                    break
+                if choose_yes is False and "no" in txt:
+                    chosen_radio = radio
+                    break
+
+            if not chosen_radio:
+                chosen_radio = group[0]
+
+            try:
+                chosen_radio.check(force=True)
+                self._human_pause(0.2, 0.6)
+            except Exception:
+                continue
+
+        # Tick required consent checkboxes if empty.
+        try:
+            checkboxes = page.query_selector_all("input[type='checkbox'][required]")
+        except Exception:
+            checkboxes = []
+        for cb in checkboxes:
+            try:
+                if not cb.is_checked():
+                    cb.check(force=True)
+                    self._human_pause(0.2, 0.6)
+            except Exception:
+                continue
 
     def _handle_external_apply(self, page) -> str | None:
         btn = self._find_apply_button(page)
@@ -558,10 +773,10 @@ class LinkedInAutoApplyBot:
         match = re.search(r"/jobs/view/(\d+)", url)
         return match.group(1) if match else url
 
-    def _progressive_scroll(self, page) -> None:
-        for _ in range(3):
-            page.mouse.wheel(0, random.randint(500, 1000))
-            self._human_pause(0.4, 1.1)
+    def _progressive_scroll(self, page, iterations: int = 8) -> None:
+        for _ in range(iterations):
+            page.mouse.wheel(0, random.randint(600, 1200))
+            self._human_pause(0.3, 0.8)
 
     def _human_pause(self, min_seconds: float | None = None, max_seconds: float | None = None) -> None:
         min_wait = min_seconds if min_seconds is not None else self.config.settings.random_wait_min_seconds
