@@ -67,7 +67,17 @@ class LinkedInAutoApplyBot:
         return run_result
 
     def _run_once(self, playwright, *, headless: bool) -> None:
-        browser = playwright.chromium.launch(headless=headless)
+        # Prefer installed desktop browsers to avoid requiring Playwright
+        # browser downloads on end-user machines.
+        browser = None
+        for channel in ["chrome", "msedge"]:
+            try:
+                browser = playwright.chromium.launch(headless=headless, channel=channel)
+                break
+            except Exception:
+                continue
+        if browser is None:
+            browser = playwright.chromium.launch(headless=headless)
         context = browser.new_context(
             storage_state=str(self.config.paths.browser_state_path)
             if self.config.paths.browser_state_path.exists()

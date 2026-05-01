@@ -3,10 +3,18 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 import os
+import sys
 from dotenv import load_dotenv
 
 
-BASE_DIR = Path(__file__).resolve().parent
+def _resolve_base_dir() -> Path:
+    # When bundled as an executable, store runtime files next to the .exe.
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+BASE_DIR = _resolve_base_dir()
 
 
 @dataclass
