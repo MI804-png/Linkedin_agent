@@ -28,7 +28,12 @@ ssh $OPTS ubuntu@$IP "printf '%s' '$B64' | base64 -d > ~/cv_portofolio/linkedin_
 # Verify
 SIZE=$(ssh $OPTS ubuntu@$IP "wc -c < ~/cv_portofolio/linkedin_bot/playwright_state.json")
 echo "Uploaded $SIZE bytes"
-ssh $OPTS ubuntu@$IP "python3 -c \"import json; d=json.load(open(\"cv_portofolio/linkedin_bot/playwright_state.json\")); print('Cookies:', len(d.get('cookies',[])), 'Origins:', len(d.get('origins',[])))\""
+ssh $OPTS ubuntu@$IP 'python3 - <<EOF
+import json, os
+p = os.path.expanduser("~/cv_portofolio/linkedin_bot/playwright_state.json")
+d = json.load(open(p))
+print("Cookies:", len(d.get("cookies", [])), "  Origins:", len(d.get("origins", [])))
+EOF'
 
 echo ''
 echo 'Session uploaded! Now run a test:'
