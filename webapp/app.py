@@ -12,11 +12,13 @@ import json
 import hashlib
 import secrets
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from functools import wraps
 
 from sqlalchemy import text, inspect
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm.exc import MultipleResultsFound
 from flask import (
     Flask, render_template, request, redirect, url_for,
     session, flash, jsonify, abort, send_from_directory, send_file
@@ -92,7 +94,6 @@ class User(db.Model):
     def get_or_create_token(self) -> str:
         if not self.api_token:
             self.api_token = secrets.token_urlsafe(32)
-            db.session.commit()
         return self.api_token
 
     profile = db.relationship("UserProfile", back_populates="user", uselist=False, cascade="all, delete-orphan")
@@ -181,6 +182,10 @@ def login_required(f):
         if "user_id" not in session:
             flash("Please log in first.", "warning")
             return redirect(url_for("login"))
+        if not get_current_user():
+            session.clear()
+            flash("Session expired. Please log in again.", "warning")
+            return redirect(url_for("login"))
         return f(*args, **kwargs)
     return decorated
 
@@ -192,12 +197,37 @@ def get_current_user() -> User | None:
 
 def ensure_user_profile(user: User) -> UserProfile:
     """Return existing profile or create one for legacy users."""
-    profile = user.profile
+    if user is None:
+        raise ValueError("User is required")
+    try:
+        profile = user.profile
+    except MultipleResultsFound:
+        profiles = UserProfile.query.filter_by(user_id=user.id).order_by(UserProfile.id.asc()).all()
+        profile = profiles[0] if profiles else None
+        for extra in profiles[1:]:
+            db.session.delete(extra)
+        db.session.commit()
     if profile is None:
         profile = UserProfile(user_id=user.id, linkedin_email=user.email)
         db.session.add(profile)
         db.session.commit()
     return profile
+
+
+def ensure_api_token(user: User) -> str:
+    """Return existing token or safely create one with retry on rare collisions/locks."""
+    if user.api_token:
+        return user.api_token
+
+    for _ in range(3):
+        user.api_token = secrets.token_urlsafe(32)
+        try:
+            db.session.commit()
+            return user.api_token
+        except IntegrityError:
+            db.session.rollback()
+
+    raise RuntimeError("Could not generate API token")
 
 
 def token_required(f):
@@ -228,7 +258,7 @@ def api_login():
     user = User.query.filter_by(email=email).first()
     if not user or not user.check_password(password):
         return jsonify({"error": "Invalid email or password"}), 401
-    token = user.get_or_create_token()
+    token = ensure_api_token(user)
     return jsonify({"token": token, "user_id": user.id})
 
 
@@ -407,7 +437,17 @@ def logout():
 @app.route("/download/extension")
 @login_required
 def download_extension():
-    """Serve the chrome_extension folder as a downloadable zip."""
+    """Serve the packaged .crx extension for direct install."""
+    crx_file = BASE_DIR / "static" / "linkedin_autoapply.crx"
+    if crx_file.exists():
+        return send_file(
+            crx_file,
+            mimetype="application/x-crx",
+            as_attachment=True,
+            download_name="linkedin_autoapply.crx",
+        )
+    
+    # Fallback: serve as ZIP if .crx doesn't exist
     ext_dir = BASE_DIR.parent / "chrome_extension"
     if not ext_dir.exists():
         abort(404)
@@ -431,11 +471,16 @@ def download_extension():
 @login_required
 def dashboard():
     user = get_current_user()
-    ensure_user_profile(user)
-    runs = BotRun.query.filter_by(user_id=user.id).order_by(BotRun.started_at.desc()).limit(20).all()
-    total_submitted = db.session.query(db.func.sum(BotRun.submitted)).filter_by(user_id=user.id).scalar() or 0
-    api_token = user.get_or_create_token()
-    return render_template("dashboard.html", user=user, runs=runs, total_submitted=total_submitted, api_token=api_token)
+    try:
+        p = ensure_user_profile(user)
+        runs = BotRun.query.filter_by(user_id=user.id).order_by(BotRun.started_at.desc()).limit(20).all()
+        total_submitted = db.session.query(db.func.sum(BotRun.submitted)).filter_by(user_id=user.id).scalar() or 0
+        api_token = ensure_api_token(user)
+        return render_template("dashboard.html", user=user, p=p, runs=runs, total_submitted=total_submitted, api_token=api_token)
+    except Exception:
+        app.logger.exception("Dashboard render failed for user_id=%s", session.get("user_id"))
+        flash("Dashboard failed to load. Please open Profile first, then return to Dashboard.", "warning")
+        return redirect(url_for("profile"))
 
 
 # ─── Routes: Profile / Settings ───────────────────────────────────────────────
@@ -507,25 +552,37 @@ def cv_download():
 
 # ─── Routes: Manual run ───────────────────────────────────────────────────────
 
-@app.route("/run", methods=["POST"])
+@app.get("/run")
+@login_required
+def run_now_info():
+    flash("Use the Run Now button from Dashboard to start a run.", "info")
+    return redirect(url_for("dashboard"))
+
+
+@app.post("/run")
 @login_required
 def run_now():
-    user = get_current_user()
-    p = ensure_user_profile(user)
+    try:
+        user = get_current_user()
+        p = ensure_user_profile(user)
 
-    if not p.linkedin_email or not p.linkedin_password_enc:
-        flash("Please set your LinkedIn credentials first.", "warning")
-        return redirect(url_for("profile"))
-    if not p.cv_filename:
-        flash("Please upload your CV first.", "warning")
-        return redirect(url_for("profile"))
+        if not p.linkedin_email or not p.linkedin_password_enc:
+            flash("Please set your LinkedIn credentials first.", "warning")
+            return redirect(url_for("profile"))
+        if not p.cv_filename:
+            flash("Please upload your CV first.", "warning")
+            return redirect(url_for("profile"))
 
-    # Enqueue / trigger bot run in background thread
-    from bot_runner import run_for_user_async
-    run_for_user_async(user.id)
-
-    flash("Bot run started! Check the dashboard for progress.", "info")
-    return redirect(url_for("dashboard"))
+        # Enqueue / trigger bot run in background thread
+        from bot_runner import run_for_user_async
+        run_for_user_async(user.id)
+        flash("Bot run started! Check the dashboard for progress.", "info")
+        return redirect(url_for("dashboard"))
+    except Exception as exc:
+        uid = session.get("user_id")
+        app.logger.exception("Failed to start bot run for user_id=%s", uid)
+        flash(f"Could not start bot run: {exc}", "danger")
+        return redirect(url_for("dashboard"))
 
 
 @app.route("/api/run_status/<int:run_id>")
@@ -535,6 +592,17 @@ def run_status(run_id: int):
     run = db.session.get(BotRun, run_id)
     if not run or run.user_id != user.id:
         abort(404)
+
+    # Self-heal stale "running" rows even if the app process was interrupted.
+    # This keeps the dashboard from showing "Running..." forever.
+    if run.status == "running" and run.started_at:
+        if datetime.utcnow() - run.started_at > timedelta(minutes=20):
+            run.status = "error"
+            run.finished_at = datetime.utcnow()
+            note = "Run marked stale during status check (timeout exceeded)."
+            run.log_snippet = (run.log_snippet + "\n" + note).strip() if run.log_snippet else note
+            db.session.commit()
+
     return jsonify({
         "status": run.status,
         "submitted": run.submitted,
@@ -586,9 +654,31 @@ def ensure_schema_updates() -> None:
             app.logger.warning("Schema auto-update skipped: %s", exc)
 
 
+def cleanup_stale_runs() -> None:
+    """Mark interrupted running rows as error after server restarts/crashes."""
+    with app.app_context():
+        try:
+            cutoff = datetime.utcnow() - timedelta(minutes=30)
+            stale = BotRun.query.filter(
+                BotRun.status == "running",
+                BotRun.started_at < cutoff,
+            ).all()
+            if not stale:
+                return
+            for run in stale:
+                run.status = "error"
+                run.finished_at = datetime.utcnow()
+                note = "Run marked stale after process restart/interruption."
+                run.log_snippet = (run.log_snippet + "\n" + note).strip() if run.log_snippet else note
+            db.session.commit()
+        except Exception as exc:
+            app.logger.warning("Stale run cleanup skipped: %s", exc)
+
+
 # Always initialise DB tables (works under gunicorn --preload and direct run)
 create_tables()
 ensure_schema_updates()
+cleanup_stale_runs()
 
 # Start the daily scheduler (gunicorn or direct run)
 from scheduler import start_scheduler as _start_scheduler

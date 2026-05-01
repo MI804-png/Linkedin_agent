@@ -8,7 +8,6 @@
     <p class="text-muted small mb-0">Welcome back, {{ user.email }}</p>
   </div>
   <div class="col-auto d-flex gap-2">
-    {% set p = user.profile %}
     {% if p and p.auto_apply_enabled %}
       <span class="badge bg-success py-2 px-3 align-self-center">
         <i class="bi bi-check-circle me-1"></i> Auto-apply ON
@@ -16,7 +15,7 @@
     {% else %}
       <span class="badge bg-secondary py-2 px-3 align-self-center">Auto-apply OFF</span>
     {% endif %}
-    <form method="post" action="{{ url_for('run_now') }}">
+    <form method="post" action="{{ url_for('run_now') }}" id="run-now-form">
       <button class="btn btn-primary" type="submit">
         <i class="bi bi-play-circle me-1"></i> Run Now
       </button>
@@ -77,11 +76,10 @@
       </a>
       <div class="collapse" id="installSteps">
         <ol class="mb-0 mt-2 small">
-          <li>Click <strong>Download Extension</strong> above and save the zip</li>
-          <li>Unzip the file anywhere on your PC</li>
-          <li>Open Chrome → go to <code>chrome://extensions/</code></li>
-          <li>Turn on <strong>Developer mode</strong> (top-right toggle)</li>
-          <li>Click <strong>Load unpacked</strong> → select the unzipped <code>chrome_extension</code> folder</li>
+          <li>Click <strong>Download Extension</strong> above</li>
+          <li>Open Chrome and go to <code>chrome://extensions/</code></li>
+          <li>Drag the downloaded <code>.crx</code> file into the extensions page</li>
+          <li>Click <strong>Add extension</strong> when prompted</li>
           <li>The AutoApply icon appears in your toolbar — click it and log in using your token below</li>
         </ol>
       </div>
@@ -200,18 +198,45 @@ function copyServer() {
 }
 
 // Auto-refresh status for running runs
+var runNowForm = document.getElementById('run-now-form');
+if (runNowForm) {
+  runNowForm.addEventListener('submit', function() {
+    sessionStorage.setItem('runStarted', '1');
+  });
+}
+
+if (sessionStorage.getItem('runStarted') === '1') {
+  sessionStorage.removeItem('runStarted');
+  // Quick refresh after triggering a run so the new row appears without long waiting.
+  setTimeout(function() { location.reload(); }, 1200);
+}
+
 document.querySelectorAll('[id^="status-badge-"]').forEach(function(badge) {
   var runId = badge.id.replace('status-badge-', '');
-  var interval = setInterval(function() {
-    fetch('/api/run_status/' + runId)
-      .then(r => r.json())
-      .then(data => {
+  function pollStatus() {
+    fetch('/api/run_status/' + runId, { credentials: 'same-origin' })
+      .then(function(r) {
+        if (r.redirected || r.status === 401 || r.status === 403) {
+          return null;
+        }
+        return r.json();
+      })
+      .then(function(data) {
+        if (!data) {
+          return;
+        }
         if (data.status !== 'running') {
           clearInterval(interval);
           location.reload();
         }
+      })
+      .catch(function() {
+        // Ignore transient polling/network errors.
       });
-  }, 4000);
+  }
+
+  pollStatus();
+  var interval = setInterval(pollStatus, 2000);
 });
 </script>
 {% endblock %}
