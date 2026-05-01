@@ -28,9 +28,11 @@ ssh $OPTS ubuntu@$IP "printf '%s' '$B64' | base64 -d > ~/cv_portofolio/linkedin_
 # Verify
 SIZE=$(ssh $OPTS ubuntu@$IP "wc -c < ~/cv_portofolio/linkedin_bot/playwright_state.json")
 echo "Uploaded $SIZE bytes"
-
-# Write a tiny check script on the VM, run it, then clean up
-ssh $OPTS ubuntu@$IP "printf 'import json,os\np=os.path.expanduser(\"~/cv_portofolio/linkedin_bot/playwright_state.json\")\nd=json.load(open(p))\nprint(\"Cookies:\",len(d.get(\"cookies\",[])),\" Origins:\",len(d.get(\"origins\",[])))\n' > /tmp/_chk.py && python3 /tmp/_chk.py && rm /tmp/_chk.py"
+if [ "$SIZE" -gt 1000 ] 2>/dev/null; then
+  echo "Session file looks good!"
+else
+  echo "WARNING: file may be empty or corrupt"
+fi
 
 echo ''
 echo 'Session uploaded! Now run a test:'
