@@ -59,6 +59,38 @@
   </div>
 </div>
 
+<!-- Chrome Extension token card -->
+<div class="card mb-4">
+  <div class="card-header bg-white fw-semibold">
+    <i class="bi bi-puzzle me-1 text-primary"></i> Chrome Extension
+  </div>
+  <div class="card-body">
+    <p class="text-muted small mb-2">Paste these into the extension popup to connect it to your account.</p>
+    <div class="row g-3 align-items-end">
+      <div class="col-md-8">
+        <label class="form-label fw-semibold small">Your API Token</label>
+        <div class="input-group">
+          <input type="text" id="apiTokenField" class="form-control font-monospace"
+                 value="{{ user.get_or_create_token() }}" readonly>
+          <button class="btn btn-outline-secondary" type="button" onclick="copyToken()">
+            <i class="bi bi-clipboard"></i> Copy
+          </button>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label fw-semibold small">Server URL</label>
+        <div class="input-group">
+          <input type="text" id="serverUrlField" class="form-control font-monospace small"
+                 value="{{ request.host_url.rstrip('/') }}" readonly>
+          <button class="btn btn-outline-secondary" type="button" onclick="copyServer()">
+            <i class="bi bi-clipboard"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Run history -->
 <div class="card">
   <div class="card-header bg-white fw-semibold">
@@ -128,6 +160,23 @@
 
 {% block scripts %}
 <script>
+function copyToken() {
+  var field = document.getElementById('apiTokenField');
+  navigator.clipboard.writeText(field.value).then(function() {
+    var btn = field.nextElementSibling;
+    btn.innerHTML = '<i class="bi bi-check2"></i> Copied!';
+    setTimeout(function() { btn.innerHTML = '<i class="bi bi-clipboard"></i> Copy'; }, 2000);
+  });
+}
+function copyServer() {
+  var field = document.getElementById('serverUrlField');
+  navigator.clipboard.writeText(field.value).then(function() {
+    var btn = field.nextElementSibling;
+    btn.innerHTML = '<i class="bi bi-check2"></i>';
+    setTimeout(function() { btn.innerHTML = '<i class="bi bi-clipboard"></i>'; }, 2000);
+  });
+}
+
 // Auto-refresh status for running runs
 document.querySelectorAll('[id^="status-badge-"]').forEach(function(badge) {
   var runId = badge.id.replace('status-badge-', '');
