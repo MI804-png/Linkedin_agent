@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from functools import wraps
 
+from sqlalchemy import text, inspect
 from flask import (
     Flask, render_template, request, redirect, url_for,
     session, flash, jsonify, abort, send_from_directory, send_file
@@ -189,6 +190,16 @@ def get_current_user() -> User | None:
     return db.session.get(User, uid) if uid else None
 
 
+def ensure_user_profile(user: User) -> UserProfile:
+    """Return existing profile or create one for legacy users."""
+    profile = user.profile
+    if profile is None:
+        profile = UserProfile(user_id=user.id, linkedin_email=user.email)
+        db.session.add(profile)
+        db.session.commit()
+    return profile
+
+
 def token_required(f):
     """Decorator for extension API endpoints — authenticates via Bearer token."""
     @wraps(f)
@@ -234,7 +245,7 @@ def api_ext_status(user):
     today_submitted = sum(r.submitted for r in today_runs)
     total_runs = BotRun.query.filter_by(user_id=user.id).all()
     total_submitted = sum(r.submitted for r in total_runs)
-    profile = user.profile
+    profile = ensure_user_profile(user)
     return jsonify({
         "today": today_submitted,
         "total": total_submitted,
@@ -247,9 +258,7 @@ def api_ext_status(user):
 @token_required
 def api_ext_config(user):
     """Return user config for the extension to run the bot."""
-    profile = user.profile
-    if not profile:
-        return jsonify({"error": "Profile not set up"}), 404
+    profile = ensure_user_profile(user)
     return jsonify({
         "full_name": profile.full_name,
         "phone": profile.phone,
@@ -270,9 +279,7 @@ def api_ext_config(user):
 def api_ext_set_auto(user):
     """Enable or disable daily auto-apply schedule."""
     data = request.get_json(silent=True) or {}
-    profile = user.profile
-    if not profile:
-        return jsonify({"error": "Profile not found"}), 404
+    profile = ensure_user_profile(user)
     profile.auto_apply_enabled = bool(data.get("enabled", False))
     db.session.commit()
     return jsonify({"ok": True, "auto_apply_enabled": profile.auto_apply_enabled})
@@ -424,9 +431,11 @@ def download_extension():
 @login_required
 def dashboard():
     user = get_current_user()
+    ensure_user_profile(user)
     runs = BotRun.query.filter_by(user_id=user.id).order_by(BotRun.started_at.desc()).limit(20).all()
     total_submitted = db.session.query(db.func.sum(BotRun.submitted)).filter_by(user_id=user.id).scalar() or 0
-    return render_template("dashboard.html", user=user, runs=runs, total_submitted=total_submitted)
+    api_token = user.get_or_create_token()
+    return render_template("dashboard.html", user=user, runs=runs, total_submitted=total_submitted, api_token=api_token)
 
 
 # ─── Routes: Profile / Settings ───────────────────────────────────────────────
@@ -435,7 +444,7 @@ def dashboard():
 @login_required
 def profile():
     user = get_current_user()
-    p = user.profile
+    p = ensure_user_profile(user)
 
     if request.method == "POST":
         p.full_name = request.form.get("full_name", "").strip()
@@ -490,7 +499,7 @@ def profile():
 @login_required
 def cv_download():
     user = get_current_user()
-    p = user.profile
+    p = ensure_user_profile(user)
     if not p.cv_filename:
         abort(404)
     return send_from_directory(UPLOAD_FOLDER, p.cv_filename, as_attachment=True, download_name="cv.pdf")
@@ -502,7 +511,7 @@ def cv_download():
 @login_required
 def run_now():
     user = get_current_user()
-    p = user.profile
+    p = ensure_user_profile(user)
 
     if not p.linkedin_email or not p.linkedin_password_enc:
         flash("Please set your LinkedIn credentials first.", "warning")
@@ -547,8 +556,39 @@ def create_tables() -> None:
         db.create_all()
 
 
+def ensure_schema_updates() -> None:
+    """Apply tiny schema updates for existing installations."""
+    with app.app_context():
+        try:
+            dialect = db.engine.dialect.name
+            inspector = inspect(db.engine)
+            if "users" not in inspector.get_table_names():
+                return
+
+            col_names = {c["name"] for c in inspector.get_columns("users")}
+
+            if "api_token" not in col_names:
+                if dialect == "sqlite":
+                    db.session.execute(text("ALTER TABLE users ADD COLUMN api_token VARCHAR(64)"))
+                elif dialect == "postgresql":
+                    db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS api_token VARCHAR(64)"))
+                else:
+                    return
+                db.session.commit()
+
+            if dialect == "sqlite":
+                db.session.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_api_token ON users(api_token)"))
+                db.session.commit()
+            elif dialect == "postgresql":
+                db.session.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_api_token ON users(api_token)"))
+                db.session.commit()
+        except Exception as exc:
+            app.logger.warning("Schema auto-update skipped: %s", exc)
+
+
 # Always initialise DB tables (works under gunicorn --preload and direct run)
 create_tables()
+ensure_schema_updates()
 
 # Start the daily scheduler (gunicorn or direct run)
 from scheduler import start_scheduler as _start_scheduler

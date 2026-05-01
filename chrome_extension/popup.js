@@ -15,7 +15,6 @@ async function setStorage(obj) {
 
 function showView(name) {
   ["login", "dashboard", "running"].forEach(v => {
-    $(` view-${v}`);
     const el = $(`view-${v}`);
     if (el) el.style.display = v === name ? "block" : "none";
   });
