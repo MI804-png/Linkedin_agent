@@ -169,7 +169,11 @@ class LinkedInAutoApplyBot:
                 continue
 
         # Fallback: scan buttons and anchors for apply text
-        for el in page.query_selector_all("button, a"):
+        try:
+            all_els = page.query_selector_all("button, a")
+        except Exception:
+            all_els = []
+        for el in all_els:
             try:
                 txt = (el.inner_text() or "").strip().lower()
                 aria = (el.get_attribute("aria-label") or "").lower()
@@ -288,10 +292,17 @@ class LinkedInAutoApplyBot:
         self._progressive_scroll(page)
 
         # Broad anchor match — job cards use multiple link patterns across LinkedIn versions
-        anchors = page.query_selector_all("a")
+        try:
+            page.wait_for_load_state("domcontentloaded", timeout=10000)
+            anchors = page.query_selector_all("a")
+        except Exception:
+            anchors = []
         urls: list[str] = []
         for anchor in anchors:
-            href = anchor.get_attribute("href")
+            try:
+                href = anchor.get_attribute("href")
+            except Exception:
+                continue
             if not href:
                 continue
             if href.startswith("/"):
@@ -422,7 +433,10 @@ class LinkedInAutoApplyBot:
             "graduation": profile.graduation_year,
         }
 
-        inputs = page.query_selector_all("input, textarea")
+        try:
+            inputs = page.query_selector_all("input, textarea")
+        except Exception:
+            inputs = []
         for input_el in inputs:
             input_type = (input_el.get_attribute("type") or "text").lower()
             if input_type in {"hidden", "submit", "button", "checkbox", "radio", "file"}:
