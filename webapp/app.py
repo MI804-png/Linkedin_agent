@@ -432,6 +432,23 @@ def logout():
     return redirect(url_for("index"))
 
 
+# ─── Routes: Bot app download ───────────────────────────────────────────────
+
+@app.route("/download/bot")
+@login_required
+def download_bot():
+    """Serve the packaged Windows bot executable as a ZIP."""
+    zip_path = BASE_DIR.parent / "dist" / "LinkedInAutoApply.zip"
+    if zip_path.exists():
+        return send_file(
+            zip_path,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name="LinkedInAutoApply.zip",
+        )
+    abort(404)
+
+
 # ─── Routes: Extension download ──────────────────────────────────────────────
 
 @app.route("/download/extension")

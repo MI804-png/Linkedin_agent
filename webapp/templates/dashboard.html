@@ -111,6 +111,39 @@
   </div>
 </div>
 
+<!-- Windows Bot App card -->
+<div class="card mb-4">
+  <div class="card-header bg-white fw-semibold d-flex align-items-center justify-content-between">
+    <span><i class="bi bi-robot me-1 text-success"></i> Windows Bot App</span>
+    <a href="{{ url_for('download_bot') }}" class="btn btn-success btn-sm">
+      <i class="bi bi-download me-1"></i> Download Bot (.zip)
+    </a>
+  </div>
+  <div class="card-body">
+    <div class="alert alert-warning border mb-3 py-2 px-3 small">
+      <i class="bi bi-info-circle me-1"></i>
+      The bot <strong>cannot run on the server</strong> — it needs your local Windows PC to control a real browser on LinkedIn.
+    </div>
+    <div class="alert alert-light border mb-0 py-2 px-3">
+      <a class="fw-semibold text-decoration-none text-dark d-flex align-items-center justify-content-between"
+         data-bs-toggle="collapse" href="#botSetupSteps" role="button">
+        <span><i class="bi bi-question-circle me-1 text-success"></i> How to set up &amp; run automatically</span>
+        <i class="bi bi-chevron-down small"></i>
+      </a>
+      <div class="collapse" id="botSetupSteps">
+        <ol class="mb-0 mt-2 small">
+          <li>Click <strong>Download Bot (.zip)</strong> above and extract the folder</li>
+          <li>Right-click <code>enable_hibernate.ps1</code> → <strong>Run with PowerShell</strong> (one-time setup — adds Hibernate to your Start menu)</li>
+          <li>Double-click <code>LinkedInAutoApply.exe</code> — enter your LinkedIn email &amp; password on first run</li>
+          <li>The bot is now scheduled to run every day at <strong>08:30 AM</strong> automatically</li>
+          <li>Each night: click <strong>Start → Power → Hibernate</strong> instead of Shut Down</li>
+          <li>At 08:30 AM your PC wakes up, applies to up to 25 jobs, then hibernates itself again ✅</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Run history -->
 <div class="card">
   <div class="card-header bg-white fw-semibold">
