@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LinkedIn AutoApply</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 320px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      background: #f3f6fb;
+      color: #1d2129;
+    }
+    .header {
+      background: #0a66c2;
+      color: white;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .header h1 { font-size: 16px; font-weight: 600; }
+    .header .sub { font-size: 11px; opacity: 0.8; }
+    .body { padding: 16px; }
+
+    /* ── Login view ── */
+    #view-login label { display: block; font-size: 12px; color: #555; margin-bottom: 4px; margin-top: 10px; }
+    #view-login input {
+      width: 100%; padding: 8px 10px; border: 1px solid #ccc;
+      border-radius: 6px; font-size: 13px;
+    }
+    #view-login input:first-of-type { margin-top: 0; }
+
+    /* ── Connected view ── */
+    .status-card {
+      background: white;
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .status-card .label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.4px; }
+    .status-card .value { font-size: 15px; font-weight: 600; margin-top: 2px; }
+    .status-card .value.green { color: #0a8a0a; }
+    .status-card .value.red { color: #cc0000; }
+    .status-card .value.blue { color: #0a66c2; }
+
+    .row { display: flex; gap: 8px; }
+    .row .status-card { flex: 1; }
+
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      background: white; border-radius: 8px; padding: 12px 14px;
+      margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .toggle-row span { font-size: 13px; font-weight: 500; }
+
+    /* Toggle switch */
+    .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+      background: #ccc; border-radius: 24px; transition: .3s;
+    }
+    .slider:before {
+      position: absolute; content: "";
+      height: 18px; width: 18px; left: 3px; bottom: 3px;
+      background: white; border-radius: 50%; transition: .3s;
+    }
+    input:checked + .slider { background: #0a66c2; }
+    input:checked + .slider:before { transform: translateX(20px); }
+
+    .next-run {
+      background: white; border-radius: 8px; padding: 10px 14px;
+      margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      font-size: 12px; color: #555;
+    }
+    .next-run strong { color: #1d2129; }
+
+    /* Buttons */
+    .btn {
+      display: block; width: 100%; padding: 9px;
+      border: none; border-radius: 6px; font-size: 13px;
+      font-weight: 600; cursor: pointer; text-align: center;
+      margin-bottom: 8px;
+    }
+    .btn-primary { background: #0a66c2; color: white; }
+    .btn-primary:hover { background: #004182; }
+    .btn-secondary { background: #e7edf4; color: #0a66c2; }
+    .btn-secondary:hover { background: #d0dcea; }
+    .btn-danger { background: #fff0f0; color: #cc0000; }
+    .btn-danger:hover { background: #ffd9d9; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .error { color: #cc0000; font-size: 12px; margin-top: 8px; text-align: center; }
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.4); border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 4px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #view-running .log {
+      background: #1d2129; color: #a8ffb8; font-family: monospace;
+      font-size: 11px; border-radius: 6px; padding: 10px;
+      max-height: 120px; overflow-y: auto; margin-bottom: 10px;
+      white-space: pre-wrap;
+    }
+
+    .server-row {
+      display: flex; gap: 6px; margin-bottom: 10px; align-items: center;
+    }
+    .server-row input {
+      flex: 1; padding: 6px 8px; border: 1px solid #ccc;
+      border-radius: 6px; font-size: 12px;
+    }
+    .server-row button {
+      padding: 6px 10px; border: none; border-radius: 6px;
+      background: #e7edf4; color: #0a66c2; font-size: 12px; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1>LinkedIn AutoApply</h1>
+      <div class="sub">Automatic Easy Apply bot</div>
+    </div>
+  </div>
+
+  <div class="body">
+
+    <!-- ── Login view ── -->
+    <div id="view-login">
+      <div class="server-row">
+        <input id="server-url" type="url" placeholder="Server URL (optional)" />
+        <button id="btn-save-server">Save</button>
+      </div>
+      <label>Email</label>
+      <input id="login-email" type="email" placeholder="your@email.com" />
+      <label>Password</label>
+      <input id="login-password" type="password" placeholder="••••••••" />
+      <br><br>
+      <button class="btn btn-primary" id="btn-login">Connect Account</button>
+      <div class="error" id="login-error"></div>
+    </div>
+
+    <!-- ── Connected / dashboard view ── -->
+    <div id="view-dashboard" style="display:none">
+      <div class="row">
+        <div class="status-card">
+          <div class="label">Applied today</div>
+          <div class="value blue" id="stat-today">–</div>
+        </div>
+        <div class="status-card">
+          <div class="label">Total applied</div>
+          <div class="value" id="stat-total">–</div>
+        </div>
+      </div>
+
+      <div class="toggle-row">
+        <span>Auto-apply daily</span>
+        <label class="switch">
+          <input type="checkbox" id="toggle-auto">
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="next-run" id="next-run-info">Next run: not scheduled</div>
+
+      <button class="btn btn-secondary" id="btn-run-now">▶ Run Now</button>
+      <button class="btn btn-secondary" id="btn-open-dashboard">Open Dashboard</button>
+      <button class="btn btn-danger" id="btn-logout">Disconnect</button>
+    </div>
+
+    <!-- ── Running view ── -->
+    <div id="view-running" style="display:none">
+      <div class="status-card">
+        <div class="label">Status</div>
+        <div class="value blue"><span class="spinner"></span> Running…</div>
+      </div>
+      <div class="log" id="run-log">Starting…</div>
+      <button class="btn btn-secondary" id="btn-stop">Stop</button>
+    </div>
+
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

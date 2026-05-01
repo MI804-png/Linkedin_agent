@@ -84,6 +84,13 @@ class User(db.Model):
     password_hash = db.Column(db.String(256), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_active = db.Column(db.Boolean, default=True)
+    api_token = db.Column(db.String(64), unique=True, nullable=True)
+
+    def get_or_create_token(self) -> str:
+        if not self.api_token:
+            self.api_token = secrets.token_urlsafe(32)
+            db.session.commit()
+        return self.api_token
 
     profile = db.relationship("UserProfile", back_populates="user", uselist=False, cascade="all, delete-orphan")
     runs = db.relationship("BotRun", back_populates="user", cascade="all, delete-orphan")
@@ -178,6 +185,145 @@ def login_required(f):
 def get_current_user() -> User | None:
     uid = session.get("user_id")
     return db.session.get(User, uid) if uid else None
+
+
+def token_required(f):
+    """Decorator for extension API endpoints — authenticates via Bearer token."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.headers.get("Authorization", "")
+        if not auth.startswith("Bearer "):
+            return jsonify({"error": "Missing token"}), 401
+        token = auth[7:]
+        user = User.query.filter_by(api_token=token).first()
+        if not user:
+            return jsonify({"error": "Invalid token"}), 401
+        return f(user, *args, **kwargs)
+    return decorated
+
+
+# ─── Extension API ────────────────────────────────────────────────────────────
+
+@app.route("/api/login", methods=["POST"])
+def api_login():
+    """Extension login — returns an API token."""
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+    if not email or not password:
+        return jsonify({"error": "Email and password required"}), 400
+    user = User.query.filter_by(email=email).first()
+    if not user or not user.check_password(password):
+        return jsonify({"error": "Invalid email or password"}), 401
+    token = user.get_or_create_token()
+    return jsonify({"token": token, "user_id": user.id})
+
+
+@app.route("/api/ext/status")
+@token_required
+def api_ext_status(user):
+    """Return today's stats and schedule info for the extension popup."""
+    from datetime import date
+    today_start = datetime.combine(date.today(), datetime.min.time())
+    today_runs = BotRun.query.filter(
+        BotRun.user_id == user.id,
+        BotRun.started_at >= today_start
+    ).all()
+    today_submitted = sum(r.submitted for r in today_runs)
+    total_runs = BotRun.query.filter_by(user_id=user.id).all()
+    total_submitted = sum(r.submitted for r in total_runs)
+    profile = user.profile
+    return jsonify({
+        "today": today_submitted,
+        "total": total_submitted,
+        "auto_apply_enabled": profile.auto_apply_enabled if profile else False,
+        "next_run": None
+    })
+
+
+@app.route("/api/ext/config")
+@token_required
+def api_ext_config(user):
+    """Return user config for the extension to run the bot."""
+    profile = user.profile
+    if not profile:
+        return jsonify({"error": "Profile not set up"}), 404
+    return jsonify({
+        "full_name": profile.full_name,
+        "phone": profile.phone,
+        "location": profile.location,
+        "graduation_year": profile.graduation_year,
+        "experience_years": profile.experience_years,
+        "salary_answer": profile.salary_answer,
+        "work_auth_answer": profile.work_auth_answer,
+        "keywords": profile.keywords_list,
+        "locations": profile.locations_list,
+        "max_applications": profile.max_applications,
+        "posted_days_ago": profile.posted_days_ago,
+    })
+
+
+@app.route("/api/ext/set_auto", methods=["POST"])
+@token_required
+def api_ext_set_auto(user):
+    """Enable or disable daily auto-apply schedule."""
+    data = request.get_json(silent=True) or {}
+    profile = user.profile
+    if not profile:
+        return jsonify({"error": "Profile not found"}), 404
+    profile.auto_apply_enabled = bool(data.get("enabled", False))
+    db.session.commit()
+    return jsonify({"ok": True, "auto_apply_enabled": profile.auto_apply_enabled})
+
+
+@app.route("/api/ext/report_job", methods=["POST"])
+@token_required
+def api_ext_report_job(user):
+    """Record a single job application from the extension."""
+    data = request.get_json(silent=True) or {}
+    # Find or create today's BotRun for this user
+    from datetime import date
+    today_start = datetime.combine(date.today(), datetime.min.time())
+    run = BotRun.query.filter(
+        BotRun.user_id == user.id,
+        BotRun.started_at >= today_start,
+        BotRun.status == "running"
+    ).first()
+    if not run:
+        run = BotRun(user_id=user.id, status="running")
+        db.session.add(run)
+    if data.get("status") == "submitted":
+        run.submitted += 1
+    elif data.get("status") == "failed":
+        run.failures += 1
+    else:
+        run.skipped += 1
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/ext/report_run", methods=["POST"])
+@token_required
+def api_ext_report_run(user):
+    """Mark today's bot run as complete with final stats."""
+    data = request.get_json(silent=True) or {}
+    from datetime import date
+    today_start = datetime.combine(date.today(), datetime.min.time())
+    run = BotRun.query.filter(
+        BotRun.user_id == user.id,
+        BotRun.started_at >= today_start,
+        BotRun.status == "running"
+    ).first()
+    if not run:
+        run = BotRun(user_id=user.id)
+        db.session.add(run)
+    run.status = "done"
+    run.finished_at = datetime.utcnow()
+    run.submitted = data.get("submitted", run.submitted)
+    run.skipped = data.get("skipped", run.skipped)
+    run.failures = data.get("failures", run.failures)
+    db.session.commit()
+    return jsonify({"ok": True})
 
 
 # ─── Routes: Auth ─────────────────────────────────────────────────────────────
