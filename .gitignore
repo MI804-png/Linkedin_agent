@@ -20,6 +20,9 @@ webapp/__pycache__/
 
 # LinkedIn bot runtime state
 linkedin_bot/.env
+webapp/.env.render
+webapp/.env
+webapp/.fernet_key
 linkedin_bot/playwright_state.json
 linkedin_bot/applied_jobs.json
 linkedin_bot/run_history.json
