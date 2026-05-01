@@ -188,6 +188,22 @@ def run_for_user_async(user_id: int) -> int:
     Creates a BotRun record and starts the bot in a background thread.
     Returns the run_id.
     """
+    # Bot cannot run on cloud servers (no persistent browser state, blocked IPs,
+    # insufficient memory). Only works on the local Windows machine.
+    if os.environ.get("RENDER") or os.environ.get("BOT_DISABLED"):
+        app_mod = _resolve_app_module()
+        db = app_mod.db
+        BotRun = app_mod.BotRun
+        run = BotRun(
+            user_id=user_id,
+            status="error",
+            finished_at=datetime.utcnow(),
+            log_snippet="Bot cannot run on Render. The bot must run on your local PC via Windows Task Scheduler (set for 08:30 daily).",
+        )
+        db.session.add(run)
+        db.session.commit()
+        return run.id
+
     from flask import current_app
     app_mod = _resolve_app_module()
     db = app_mod.db
