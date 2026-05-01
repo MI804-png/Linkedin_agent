@@ -5,18 +5,20 @@ then the bot applies to LinkedIn jobs automatically every day.
 """
 from __future__ import annotations
 
+import io
 import os
 import uuid
 import json
 import hashlib
 import secrets
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from functools import wraps
 
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    session, flash, jsonify, abort, send_from_directory
+    session, flash, jsonify, abort, send_from_directory, send_file
 )
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -391,6 +393,29 @@ def logout():
     session.clear()
     flash("You have been logged out.", "info")
     return redirect(url_for("index"))
+
+
+# ─── Routes: Extension download ──────────────────────────────────────────────
+
+@app.route("/download/extension")
+@login_required
+def download_extension():
+    """Serve the chrome_extension folder as a downloadable zip."""
+    ext_dir = BASE_DIR.parent / "chrome_extension"
+    if not ext_dir.exists():
+        abort(404)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for file in ext_dir.rglob("*"):
+            if file.is_file():
+                zf.write(file, file.relative_to(ext_dir.parent))
+    buf.seek(0)
+    return send_file(
+        buf,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name="linkedin_autoapply_extension.zip",
+    )
 
 
 # ─── Routes: Dashboard ────────────────────────────────────────────────────────

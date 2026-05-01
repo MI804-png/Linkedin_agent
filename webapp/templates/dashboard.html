@@ -59,13 +59,35 @@
   </div>
 </div>
 
-<!-- Chrome Extension token card -->
+<!-- Chrome Extension card -->
 <div class="card mb-4">
-  <div class="card-header bg-white fw-semibold">
-    <i class="bi bi-puzzle me-1 text-primary"></i> Chrome Extension
+  <div class="card-header bg-white fw-semibold d-flex align-items-center justify-content-between">
+    <span><i class="bi bi-puzzle me-1 text-primary"></i> Chrome Extension</span>
+    <a href="{{ url_for('download_extension') }}" class="btn btn-primary btn-sm">
+      <i class="bi bi-download me-1"></i> Download Extension
+    </a>
   </div>
   <div class="card-body">
-    <p class="text-muted small mb-2">Paste these into the extension popup to connect it to your account.</p>
+    <!-- Install steps (collapsible) -->
+    <div class="alert alert-light border mb-3 py-2 px-3">
+      <a class="fw-semibold text-decoration-none text-dark d-flex align-items-center justify-content-between"
+         data-bs-toggle="collapse" href="#installSteps" role="button">
+        <span><i class="bi bi-question-circle me-1 text-primary"></i> How to install</span>
+        <i class="bi bi-chevron-down small"></i>
+      </a>
+      <div class="collapse" id="installSteps">
+        <ol class="mb-0 mt-2 small">
+          <li>Click <strong>Download Extension</strong> above and save the zip</li>
+          <li>Unzip the file anywhere on your PC</li>
+          <li>Open Chrome → go to <code>chrome://extensions/</code></li>
+          <li>Turn on <strong>Developer mode</strong> (top-right toggle)</li>
+          <li>Click <strong>Load unpacked</strong> → select the unzipped <code>chrome_extension</code> folder</li>
+          <li>The AutoApply icon appears in your toolbar — click it and log in using your token below</li>
+        </ol>
+      </div>
+    </div>
+
+    <p class="text-muted small mb-2">Copy your credentials into the extension popup once installed.</p>
     <div class="row g-3 align-items-end">
       <div class="col-md-8">
         <label class="form-label fw-semibold small">Your API Token</label>
