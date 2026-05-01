@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}AutoApply – Automated LinkedIn Job Applications{% endblock %}
+{% block content %}
+
+<!-- Hero -->
+<div class="row justify-content-center py-5">
+  <div class="col-lg-8 text-center">
+    <div class="mb-4" style="font-size:4rem">🤖</div>
+    <h1 class="fw-bold display-5">Let the bot do the job hunting</h1>
+    <p class="lead text-muted mt-3">
+      Upload your CV, answer a few quick questions, and AutoApply will apply
+      to LinkedIn <strong>Easy Apply</strong> jobs for you — automatically,
+      every single day.
+    </p>
+    <div class="mt-4 d-flex gap-3 justify-content-center flex-wrap">
+      <a href="{{ url_for('register') }}" class="btn btn-primary btn-lg px-5">
+        <i class="bi bi-rocket-takeoff me-1"></i> Get Started Free
+      </a>
+      <a href="{{ url_for('login') }}" class="btn btn-outline-secondary btn-lg px-4">Log In</a>
+    </div>
+  </div>
+</div>
+
+<!-- Feature cards -->
+<div class="row g-4 mt-2 pb-5">
+  <div class="col-md-4">
+    <div class="card h-100 p-4 text-center">
+      <div style="font-size:2.5rem">📄</div>
+      <h5 class="mt-3 fw-semibold">Upload Your CV</h5>
+      <p class="text-muted">Upload your CV once — the bot attaches it to every application automatically.</p>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100 p-4 text-center">
+      <div style="font-size:2.5rem">⚙️</div>
+      <h5 class="mt-3 fw-semibold">Set Your Preferences</h5>
+      <p class="text-muted">Choose job keywords, locations, salary, and work authorization answers. The bot fills them in for you.</p>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100 p-4 text-center">
+      <div style="font-size:2.5rem">📬</div>
+      <h5 class="mt-3 fw-semibold">Daily Auto-Apply</h5>
+      <p class="text-muted">Enable auto-apply and wake up each morning with new applications already sent — up to 25 per day.</p>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

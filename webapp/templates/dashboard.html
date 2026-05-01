@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}Dashboard – AutoApply{% endblock %}
+{% block content %}
+
+<div class="row align-items-center mb-4">
+  <div class="col">
+    <h3 class="fw-bold mb-0"><i class="bi bi-speedometer2 me-2 text-primary"></i>Dashboard</h3>
+    <p class="text-muted small mb-0">Welcome back, {{ user.email }}</p>
+  </div>
+  <div class="col-auto d-flex gap-2">
+    {% if user.profile.auto_apply_enabled %}
+      <span class="badge bg-success py-2 px-3 align-self-center">
+        <i class="bi bi-check-circle me-1"></i> Auto-apply ON
+      </span>
+    {% else %}
+      <span class="badge bg-secondary py-2 px-3 align-self-center">Auto-apply OFF</span>
+    {% endif %}
+    <form method="post" action="{{ url_for('run_now') }}">
+      <button class="btn btn-primary" type="submit">
+        <i class="bi bi-play-circle me-1"></i> Run Now
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- Setup checklist (shown if profile is incomplete) -->
+{% set p = user.profile %}
+{% if not p.cv_filename or not p.linkedin_email or not p.linkedin_password_enc %}
+<div class="alert alert-warning d-flex align-items-center mb-4" role="alert">
+  <i class="bi bi-exclamation-triangle-fill me-2 fs-5"></i>
+  <div>
+    <strong>Setup incomplete.</strong>
+    {% if not p.cv_filename %}<br>• Upload your CV.{% endif %}
+    {% if not p.linkedin_email or not p.linkedin_password_enc %}<br>• Add your LinkedIn credentials.{% endif %}
+    <a href="{{ url_for('profile') }}" class="ms-2 btn btn-sm btn-warning">Complete Profile →</a>
+  </div>
+</div>
+{% endif %}
+
+<!-- Stats row -->
+<div class="row g-3 mb-4">
+  <div class="col-sm-4">
+    <div class="card stat-card blue p-3">
+      <div class="text-muted small">Total Submitted</div>
+      <div class="display-6 fw-bold">{{ total_submitted }}</div>
+    </div>
+  </div>
+  <div class="col-sm-4">
+    <div class="card stat-card green p-3">
+      <div class="text-muted small">Runs This Week</div>
+      <div class="display-6 fw-bold">{{ runs | selectattr('started_at') | list | length }}</div>
+    </div>
+  </div>
+  <div class="col-sm-4">
+    <div class="card stat-card {% if runs and runs[0].status == 'error' %}red{% else %}blue{% endif %} p-3">
+      <div class="text-muted small">Last Run Status</div>
+      <div class="display-6 fw-bold text-capitalize">{{ runs[0].status if runs else '–' }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- Run history -->
+<div class="card">
+  <div class="card-header bg-white fw-semibold">
+    <i class="bi bi-clock-history me-1"></i> Run History
+  </div>
+  {% if runs %}
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>#</th>
+          <th>Started</th>
+          <th>Status</th>
+          <th>Submitted</th>
+          <th>Skipped</th>
+          <th>Failures</th>
+          <th>Log</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for run in runs %}
+        <tr>
+          <td class="text-muted small">{{ run.id }}</td>
+          <td class="small">{{ run.started_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td>
+            {% if run.status == 'done' %}
+              <span class="badge bg-success">Done</span>
+            {% elif run.status == 'running' %}
+              <span class="badge badge-running" id="status-badge-{{ run.id }}">Running…</span>
+            {% else %}
+              <span class="badge bg-danger">Error</span>
+            {% endif %}
+          </td>
+          <td><span class="fw-semibold text-success">{{ run.submitted }}</span></td>
+          <td>{{ run.skipped }}</td>
+          <td class="text-danger">{{ run.failures }}</td>
+          <td>
+            {% if run.log_snippet %}
+            <button class="btn btn-sm btn-outline-secondary py-0"
+                    type="button" data-bs-toggle="collapse"
+                    data-bs-target="#log-{{ run.id }}">
+              View
+            </button>
+            {% endif %}
+          </td>
+        </tr>
+        {% if run.log_snippet %}
+        <tr class="collapse" id="log-{{ run.id }}">
+          <td colspan="7">
+            <pre class="log-box">{{ run.log_snippet }}</pre>
+          </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body text-center text-muted py-5">
+    <i class="bi bi-inbox fs-1"></i>
+    <p class="mt-2">No runs yet. Click <strong>Run Now</strong> to start!</p>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Auto-refresh status for running runs
+document.querySelectorAll('[id^="status-badge-"]').forEach(function(badge) {
+  var runId = badge.id.replace('status-badge-', '');
+  var interval = setInterval(function() {
+    fetch('/api/run_status/' + runId)
+      .then(r => r.json())
+      .then(data => {
+        if (data.status !== 'running') {
+          clearInterval(interval);
+          location.reload();
+        }
+      });
+  }, 4000);
+});
+</script>
+{% endblock %}

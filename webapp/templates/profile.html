@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}Profile – AutoApply{% endblock %}
+{% block content %}
+
+<div class="row mb-4">
+  <div class="col">
+    <h3 class="fw-bold mb-0"><i class="bi bi-person-gear me-2 text-primary"></i>Profile & Settings</h3>
+    <p class="text-muted small">Fill in all sections so the bot can apply on your behalf.</p>
+  </div>
+</div>
+
+<form method="post" enctype="multipart/form-data">
+
+  <!-- ── Personal Info ─────────────────────────────────────────────────────── -->
+  <div class="card mb-4">
+    <div class="card-header bg-primary text-white fw-semibold">
+      <i class="bi bi-person-fill me-1"></i> 1. Personal Information
+    </div>
+    <div class="card-body">
+      <p class="text-muted small mb-3">
+        These answers will be used by the bot when LinkedIn asks profile questions during application.
+      </p>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Full Name *</label>
+          <input type="text" name="full_name" class="form-control" required
+                 value="{{ p.full_name }}" placeholder="e.g. John Smith">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Phone Number *</label>
+          <input type="text" name="phone" class="form-control"
+                 value="{{ p.phone }}" placeholder="+36 70 123 4567">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Current Location *</label>
+          <input type="text" name="location" class="form-control"
+                 value="{{ p.location }}" placeholder="Budapest, Hungary">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">Graduation Year</label>
+          <input type="text" name="graduation_year" class="form-control"
+                 value="{{ p.graduation_year }}" placeholder="2027">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">Years of Experience</label>
+          <input type="text" name="experience_years" class="form-control"
+                 value="{{ p.experience_years }}" placeholder="3">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Work Authorization Answer</label>
+          <input type="text" name="work_auth_answer" class="form-control"
+                 value="{{ p.work_auth_answer }}"
+                 placeholder="Yes, I have a valid work permit.">
+          <div class="form-text">Used when LinkedIn asks "Are you authorized to work in X?"</div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Salary / Compensation Answer</label>
+          <input type="text" name="salary_answer" class="form-control"
+                 value="{{ p.salary_answer }}"
+                 placeholder="Negotiable / 1,000,000 HUF/month">
+          <div class="form-text">Used when LinkedIn asks for expected salary.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── CV Upload ─────────────────────────────────────────────────────────── -->
+  <div class="card mb-4">
+    <div class="card-header bg-success text-white fw-semibold">
+      <i class="bi bi-file-earmark-pdf-fill me-1"></i> 2. Your CV (PDF)
+    </div>
+    <div class="card-body">
+      {% if p.cv_filename %}
+      <div class="alert alert-success d-flex align-items-center py-2 mb-3">
+        <i class="bi bi-check-circle-fill me-2"></i>
+        CV uploaded.
+        <a href="{{ url_for('cv_download') }}" class="ms-2 btn btn-sm btn-outline-success py-0">
+          <i class="bi bi-download me-1"></i>Download
+        </a>
+      </div>
+      {% endif %}
+      <label class="form-label fw-semibold">
+        {{ "Replace CV (PDF)" if p.cv_filename else "Upload CV (PDF) *" }}
+      </label>
+      <input type="file" name="cv_file" class="form-control" accept=".pdf"
+             {{ "required" if not p.cv_filename else "" }}>
+      <div class="form-text">Max 8 MB. Only PDF accepted.</div>
+    </div>
+  </div>
+
+  <!-- ── Job Search Settings ───────────────────────────────────────────────── -->
+  <div class="card mb-4">
+    <div class="card-header bg-info text-white fw-semibold">
+      <i class="bi bi-search me-1"></i> 3. Job Search Settings
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Job Keywords *</label>
+          <textarea name="keywords" class="form-control" rows="4"
+                    placeholder="One keyword per line:&#10;Software Developer&#10;Full Stack Developer&#10;Python Developer">{{ p.keywords }}</textarea>
+          <div class="form-text">One keyword per line. The bot searches LinkedIn for each.</div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Search Locations *</label>
+          <textarea name="search_locations" class="form-control" rows="4"
+                    placeholder="One location per line:&#10;Hungary&#10;Budapest&#10;Remote">{{ p.search_locations }}</textarea>
+          <div class="form-text">One location per line.</div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">Max Applications Per Day</label>
+          <input type="number" name="max_applications" class="form-control"
+                 value="{{ p.max_applications }}" min="1" max="50">
+          <div class="form-text">Recommended: 10–25 to avoid LinkedIn limits.</div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">Posted Within (days)</label>
+          <input type="number" name="posted_days_ago" class="form-control"
+                 value="{{ p.posted_days_ago }}" min="1" max="30">
+          <div class="form-text">Only apply to jobs posted within this many days.</div>
+        </div>
+        <div class="col-md-4 d-flex align-items-end">
+          <div class="form-check form-switch ms-1">
+            <input class="form-check-input" type="checkbox" name="auto_apply_enabled"
+                   id="autoSwitch" {{ "checked" if p.auto_apply_enabled else "" }}>
+            <label class="form-check-label fw-semibold" for="autoSwitch">
+              Enable Daily Auto-Apply
+            </label>
+            <div class="form-text">Bot will run automatically every day at 08:30 UTC.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── LinkedIn Credentials ──────────────────────────────────────────────── -->
+  <div class="card mb-4">
+    <div class="card-header bg-warning fw-semibold">
+      <i class="bi bi-linkedin me-1"></i> 4. LinkedIn Credentials
+    </div>
+    <div class="card-body">
+      <div class="alert alert-info small py-2 mb-3">
+        <i class="bi bi-lock-fill me-1"></i>
+        Your LinkedIn password is <strong>encrypted</strong> before being stored.
+        It is only decrypted at runtime to log in.
+      </div>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">LinkedIn Email *</label>
+          <input type="email" name="linkedin_email" class="form-control"
+                 value="{{ p.linkedin_email }}" placeholder="you@example.com">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">LinkedIn Password *</label>
+          <input type="password" name="linkedin_password" class="form-control"
+                 placeholder="{{ '••••••••  (leave blank to keep current)' if p.linkedin_password_enc else 'Enter password' }}">
+          {% if p.linkedin_password_enc %}
+          <div class="form-text text-success">
+            <i class="bi bi-check-circle me-1"></i>Password saved (encrypted). Leave blank to keep it.
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Save ──────────────────────────────────────────────────────────────── -->
+  <div class="d-flex gap-2 mb-5">
+    <button type="submit" class="btn btn-primary btn-lg px-5 fw-semibold">
+      <i class="bi bi-save me-1"></i> Save Profile
+    </button>
+    <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary btn-lg">Cancel</a>
+  </div>
+
+</form>
+{% endblock %}

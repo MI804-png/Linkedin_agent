@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Log In – AutoApply{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-5">
+    <div class="card p-4 mt-3">
+      <h4 class="fw-bold mb-4"><i class="bi bi-box-arrow-in-right me-1"></i> Log In</h4>
+
+      <form method="post" novalidate>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Email address</label>
+          <input type="email" name="email" class="form-control" required
+                 placeholder="you@example.com" value="{{ request.form.get('email','') }}">
+        </div>
+        <div class="mb-4">
+          <label class="form-label fw-semibold">Password</label>
+          <input type="password" name="password" class="form-control" required placeholder="Password">
+        </div>
+        <button type="submit" class="btn btn-primary w-100 fw-semibold">
+          <i class="bi bi-box-arrow-in-right me-1"></i> Log In
+        </button>
+      </form>
+
+      <hr class="my-3">
+      <p class="text-center text-muted small">
+        No account yet? <a href="{{ url_for('register') }}">Create one</a>
+      </p>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# App runtime files (contain secrets / user data)
+webapp/.fernet_key
+webapp/app.db
+webapp/uploads/
+webapp/user_data/
+webapp/__pycache__/
+
+# LinkedIn bot runtime state
+linkedin_bot/.env
+linkedin_bot/playwright_state.json
+linkedin_bot/applied_jobs.json
+linkedin_bot/run_history.json
+linkedin_bot/state.json
+linkedin_bot/logs/
+linkedin_bot/__pycache__/
+linkedin_bot/oracle/cv_b64.txt
+
+# Oracle deploy key (never commit)
+*.pem
+*.key
+*.ppk
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# macOS
+.DS_Store
+
+# VSCode
+.vscode/
+
+# Render / Docker build artifacts
+*.log
