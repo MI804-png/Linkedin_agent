@@ -48,3 +48,8 @@ desktop.ini
 
 # Render / Docker build artifacts
 *.log
+
+# Non-thesis local folders (keep local, do not track)
+aws_5th_semester/
+python_project_MiLa_smart_5thsemester/
+software_presentation2/
