@@ -20,6 +20,19 @@
         <i class="bi bi-play-circle me-1"></i> Run Now
       </button>
     </form>
+    <form method="post" action="{{ url_for('retry_failures') }}" id="retry-form">
+      <button class="btn btn-outline-warning" type="submit"
+        title="Clear failed jobs from history and retry them">
+        <i class="bi bi-arrow-repeat me-1"></i> Retry Failures
+      </button>
+    </form>
+    <form method="post" action="{{ url_for('network_now') }}" id="network-form"
+          onsubmit="return confirm('Start networking campaign? The bot will send connection requests to recruiters at top companies (up to 20 per run).')">
+      <button class="btn btn-outline-info" type="submit"
+        title="Connect with recruiters & hiring managers at Google, Microsoft, Amazon, Meta, SAP and more">
+        <i class="bi bi-people me-1"></i> Network with Companies
+      </button>
+    </form>
   </div>
 </div>
 
@@ -35,6 +48,47 @@
   </div>
 </div>
 {% endif %}
+
+<!-- Generated motivation / cover letters -->
+<div class="card mb-4">
+  <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-file-earmark-text me-1 text-info"></i> Generated Letters</span>
+    <span class="badge bg-info-subtle text-info-emphasis">{{ generated_letters|length }}</span>
+  </div>
+  {% if generated_letters %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>File</th>
+          <th>Size</th>
+          <th>Modified</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in generated_letters %}
+        <tr>
+          <td class="small font-monospace">{{ f.name }}</td>
+          <td class="small text-muted">{{ f.size_kb }}</td>
+          <td class="small text-muted">{{ f.modified }}</td>
+          <td class="text-end">
+            <a class="btn btn-outline-info btn-sm"
+               href="{{ url_for('download_generated_letter', filename=f.name) }}">
+              <i class="bi bi-download me-1"></i> Download
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body text-muted small">
+    No generated letters yet. Start a run and the bot will create company-specific motivation and cover letters automatically.
+  </div>
+  {% endif %}
+</div>
 
 <!-- Stats row -->
 <div class="row g-3 mb-4">
@@ -144,6 +198,202 @@
   </div>
 </div>
 
+<!-- Live Run Console (visible only when a run is active) -->
+{% for run in runs %}
+{% if run.status == 'running' %}
+<div class="card mb-4 border-primary" id="live-console-card">
+  <div class="card-header bg-primary text-white d-flex align-items-center justify-content-between">
+    <span>
+      <span class="spinner-grow spinner-grow-sm me-2" role="status"></span>
+      <strong>Bot Running</strong>
+      <span class="ms-2 small opacity-75">Run #{{ run.id }} — started {{ run.started_at.strftime('%H:%M') }}</span>
+    </span>
+    <span class="small" id="live-stats">
+      Submitted: <strong id="live-submitted">{{ run.submitted }}</strong> &nbsp;
+      Skipped: <strong id="live-skipped">{{ run.skipped }}</strong> &nbsp;
+      Failures: <strong id="live-failures">{{ run.failures }}</strong>
+    </span>
+    <form method="post" action="/stop_run" class="mb-0">
+      <button type="submit" class="btn btn-sm btn-light text-danger fw-semibold border-0"
+              onclick="return confirm('Stop the bot after the current job?')">
+        <i class="bi bi-stop-circle me-1"></i>Stop
+      </button>
+    </form>
+  </div>
+  <div class="card-body p-0">
+    <pre id="live-log" style="
+      background:#0d1117; color:#e6edf3;
+      font-size:0.78rem; line-height:1.5;
+      margin:0; padding:1rem;
+      max-height:340px; overflow-y:auto;
+      border-radius:0 0 0.375rem 0.375rem;
+      white-space:pre-wrap; word-break:break-all;
+    ">{{ run.log_snippet or 'Waiting for first job…' }}</pre>
+  </div>
+</div>
+{% set active_run_id = run.id %}
+{% endif %}
+{% endfor %}
+
+<!-- Applied vs failed jobs -->
+<div class="row g-3 mb-4">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-check2-circle me-1 text-success"></i> Applied Jobs</span>
+        <span class="badge bg-success-subtle text-success-emphasis">{{ submitted_jobs|length }}</span>
+      </div>
+      {% if submitted_jobs %}
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>When</th>
+              <th>Job</th>
+              <th>Company</th>
+              <th>Details</th>
+              <th>HR Message</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for job in submitted_jobs %}
+            {% set loop_idx = loop.index %}
+            <tr>
+              <td class="small text-nowrap">{{ job.time }}</td>
+              <td class="small">
+                {% if job.job_url %}
+                  <a href="{{ job.job_url }}" target="_blank" rel="noopener">{{ job.title }}</a>
+                {% else %}
+                  {{ job.title }}
+                {% endif %}
+              </td>
+              <td class="small">{{ job.company }}</td>
+              <td class="small text-muted">{{ job.note }}</td>
+              <td class="small">
+                {% if job.hr_message_status and job.hr_message_status != '-' %}
+                  {% set hr = job.hr_message_status|lower %}
+                  {% if 'sent' in hr %}
+                    <span class="badge bg-success-subtle text-success-emphasis">{{ job.hr_message_status }}</span>
+                  {% elif 'no hiring poster' in hr or 'not connected' in hr %}
+                    <span class="badge bg-secondary-subtle text-secondary-emphasis">{{ job.hr_message_status }}</span>
+                  {% else %}
+                    <span class="badge bg-warning-subtle text-warning-emphasis">{{ job.hr_message_status }}</span>
+                  {% endif %}
+                {% else %}
+                  <span class="text-muted">-</span>
+                {% endif %}
+              </td>
+              <td class="small">
+                <button class="btn btn-outline-secondary btn-sm py-0 px-1" type="button"
+                  data-bs-toggle="collapse" data-bs-target="#report-{{ loop_idx }}" aria-expanded="false">
+                  <i class="bi bi-list-check"></i> Report
+                </button>
+              </td>
+            </tr>
+            <tr class="collapse" id="report-{{ loop_idx }}">
+              <td colspan="6" class="bg-light p-2">
+                {% if job.report and job.report.uploaded_files %}
+                <div class="mb-2">
+                  <strong class="small">📎 Uploaded Documents:</strong>
+                  <ul class="mb-1 small ps-3 mt-1">
+                    {% for f in job.report.uploaded_files %}
+                    <li>{{ f }}</li>
+                    {% endfor %}
+                  </ul>
+                </div>
+                {% else %}
+                <div class="mb-2 small text-muted">📎 <em>No upload data (job submitted before reporting was enabled)</em></div>
+                {% endif %}
+                {% if job.report and job.report.qa_pairs %}
+                <div>
+                  <strong class="small">💬 Answered Questions:</strong>
+                  <table class="table table-sm table-borderless mb-0 small mt-1">
+                    {% for pair in job.report.qa_pairs %}
+                    <tr>
+                      <td class="text-muted fw-semibold pe-2" style="width:45%;word-break:break-word;">{{ pair.q }}</td>
+                      <td style="word-break:break-word;">{{ pair.a }}</td>
+                    </tr>
+                    {% endfor %}
+                  </table>
+                </div>
+                {% else %}
+                <div class="small text-muted">💬 <em>No Q&amp;A data (job submitted before reporting was enabled)</em></div>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="card-body text-muted small">No submitted jobs yet.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Failed run history (never cleared by retry) -->
+<div class="card mb-4">
+  <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-journal-x me-1 text-danger"></i> Failed Runs History</span>
+    <span class="badge bg-danger-subtle text-danger-emphasis">{{ failed_runs|length }}</span>
+  </div>
+  {% if failed_runs %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Run #</th>
+          <th>Started</th>
+          <th>Status</th>
+          <th>Failures</th>
+          <th>Submitted</th>
+          <th>Log</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for run in failed_runs %}
+        <tr>
+          <td class="text-muted small">{{ run.id }}</td>
+          <td class="small">{{ run.started_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td>
+            {% if run.status == 'done' %}
+              <span class="badge bg-success">Done</span>
+            {% elif run.status == 'running' %}
+              <span class="badge badge-running">Running…</span>
+            {% elif run.status == 'stopped' %}
+              <span class="badge bg-warning text-dark">Stopped</span>
+            {% else %}
+              <span class="badge bg-danger">Error</span>
+            {% endif %}
+          </td>
+          <td class="text-danger fw-semibold">{{ run.failures }}</td>
+          <td class="text-success">{{ run.submitted }}</td>
+          <td>
+            {% if run.log_snippet %}
+            <button class="btn btn-sm btn-outline-secondary py-0"
+                    type="button" data-bs-toggle="collapse"
+                    data-bs-target="#failed-run-log-{{ run.id }}">
+              View
+            </button>
+            {% endif %}
+          </td>
+        </tr>
+        {% if run.log_snippet %}
+        <tr class="collapse" id="failed-run-log-{{ run.id }}">
+          <td colspan="6"><pre class="log-box">{{ run.log_snippet }}</pre></td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body text-muted small">No failed runs yet.</div>
+  {% endif %}
+</div>
+
 <!-- Run history -->
 <div class="card">
   <div class="card-header bg-white fw-semibold">
@@ -173,6 +423,8 @@
               <span class="badge bg-success">Done</span>
             {% elif run.status == 'running' %}
               <span class="badge badge-running" id="status-badge-{{ run.id }}">Running…</span>
+            {% elif run.status == 'stopped' %}
+              <span class="badge bg-warning text-dark">Stopped</span>
             {% else %}
               <span class="badge bg-danger">Error</span>
             {% endif %}
@@ -246,26 +498,49 @@ if (sessionStorage.getItem('runStarted') === '1') {
 
 document.querySelectorAll('[id^="status-badge-"]').forEach(function(badge) {
   var runId = badge.id.replace('status-badge-', '');
+  var liveLog = document.getElementById('live-log');
+  var liveSubmitted = document.getElementById('live-submitted');
+  var liveSkipped = document.getElementById('live-skipped');
+  var liveFailures = document.getElementById('live-failures');
+
+  function colorLine(line) {
+    if (line.indexOf('[SUBMITTED]') !== -1) return '<span style="color:#3fb950">' + line + '</span>';
+    if (line.indexOf('[FAILED]') !== -1)     return '<span style="color:#f85149">' + line + '</span>';
+    if (line.indexOf('[SKIPPED]') !== -1)    return '<span style="color:#8b949e">' + line + '</span>';
+    if (line.indexOf('ERROR') !== -1)        return '<span style="color:#f85149">' + line + '</span>';
+    if (line.indexOf('Starting bot') !== -1) return '<span style="color:#58a6ff">' + line + '</span>';
+    if (line.indexOf('Done.') !== -1)        return '<span style="color:#3fb950;font-weight:bold">' + line + '</span>';
+    return line;
+  }
+
   function pollStatus() {
     fetch('/api/run_status/' + runId, { credentials: 'same-origin' })
       .then(function(r) {
-        if (r.redirected || r.status === 401 || r.status === 403) {
-          return null;
-        }
+        if (r.redirected || r.status === 401 || r.status === 403) return null;
         return r.json();
       })
       .then(function(data) {
-        if (!data) {
-          return;
+        if (!data) return;
+
+        // Update live stats
+        if (liveSubmitted) liveSubmitted.textContent = data.submitted || 0;
+        if (liveSkipped)   liveSkipped.textContent   = data.skipped   || 0;
+        if (liveFailures)  liveFailures.textContent  = data.failures  || 0;
+
+        // Update live log with syntax colouring
+        if (liveLog && data.log) {
+          var lines = data.log.split('\n');
+          liveLog.innerHTML = lines.map(colorLine).join('\n');
+          // Auto-scroll to bottom
+          liveLog.scrollTop = liveLog.scrollHeight;
         }
+
         if (data.status !== 'running') {
           clearInterval(interval);
-          location.reload();
+          setTimeout(function() { location.reload(); }, 800);
         }
       })
-      .catch(function() {
-        // Ignore transient polling/network errors.
-      });
+      .catch(function() {});
   }
 
   pollStatus();

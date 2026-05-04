@@ -9,6 +9,7 @@ import io
 import os
 import uuid
 import json
+import re
 import hashlib
 import secrets
 import zipfile
@@ -16,7 +17,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from functools import wraps
 
-from sqlalchemy import text, inspect
+from sqlalchemy import text, inspect, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import MultipleResultsFound
 from flask import (
@@ -37,6 +38,7 @@ USER_DATA_FOLDER.mkdir(exist_ok=True)
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET", secrets.token_hex(32))
+PROCESS_START_UTC = datetime.utcnow()
 
 # Use PostgreSQL on Render (DATABASE_URL set automatically), else SQLite locally
 _db_url = os.environ.get("DATABASE_URL", f"sqlite:///{BASE_DIR / 'app.db'}")
@@ -120,9 +122,31 @@ class UserProfile(db.Model):
     work_auth_answer = db.Column(db.Text, default="")
     salary_answer = db.Column(db.Text, default="")
 
+    # Extended profile — screening questions
+    nationality = db.Column(db.String(64), default="")
+    is_eu_citizen = db.Column(db.Boolean, default=False)
+    willing_to_relocate = db.Column(db.Boolean, default=False)
+    willing_to_work_onsite = db.Column(db.Boolean, default=False)
+    willing_to_work_remote = db.Column(db.Boolean, default=True)
+    current_job_title = db.Column(db.String(128), default="")
+    years_management_experience = db.Column(db.String(8), default="0")
+    highest_education = db.Column(db.String(128), default="")
+    field_of_study = db.Column(db.String(128), default="")
+    english_proficiency = db.Column(db.String(64), default="Professional")
+    languages_spoken = db.Column(db.Text, default="")
+    has_drivers_license = db.Column(db.Boolean, default=False)
+    drivers_license_category = db.Column(db.String(16), default="")
+    linkedin_url = db.Column(db.String(256), default="")
+    github_url = db.Column(db.String(256), default="")
+    portfolio_url = db.Column(db.String(256), default="")
+    gender = db.Column(db.String(32), default="")
+    has_disability = db.Column(db.Boolean, default=False)
+    veteran_status = db.Column(db.String(32), default="No")
+
     # Job search settings
     keywords = db.Column(db.Text, default="Software Developer")  # newline-separated
-    search_locations = db.Column(db.Text, default="Hungary")     # newline-separated
+    search_locations = db.Column(db.Text, default="Hungary")     # comma/newline-separated
+    workplace_type = db.Column(db.String(16), default="all")      # all/remote/hybrid/on_site
     max_applications = db.Column(db.Integer, default=25)
     posted_days_ago = db.Column(db.Integer, default=7)
 
@@ -150,7 +174,9 @@ class UserProfile(db.Model):
 
     @property
     def locations_list(self) -> list[str]:
-        return [l.strip() for l in self.search_locations.splitlines() if l.strip()]
+        chunks = [c.strip() for c in re.split(r"[\n,;|]+", self.search_locations or "") if c.strip()]
+        # Keep order while removing duplicates to avoid repeated searches.
+        return list(dict.fromkeys(chunks))
 
     @property
     def cv_path(self) -> Path | None:
@@ -230,6 +256,120 @@ def ensure_api_token(user: User) -> str:
     raise RuntimeError("Could not generate API token")
 
 
+def _load_recent_job_events(user_id: int, limit: int = 100) -> tuple[list[dict], list[dict]]:
+    """Load recent submitted/failed job events from the per-user job log."""
+    jobs_file = USER_DATA_FOLDER / str(user_id) / "applied_jobs.json"
+    archive_file = USER_DATA_FOLDER / str(user_id) / "failed_jobs_archive.json"
+
+    raw: list[dict] = []
+
+    if jobs_file.exists():
+        try:
+            current_raw = json.loads(jobs_file.read_text(encoding="utf-8"))
+            if isinstance(current_raw, list):
+                raw.extend(current_raw)
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    if archive_file.exists():
+        try:
+            archive_raw = json.loads(archive_file.read_text(encoding="utf-8"))
+            if isinstance(archive_raw, list):
+                raw.extend(archive_raw)
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    if not raw:
+        return [], []
+
+    submitted_jobs: list[dict] = []
+    failed_jobs: list[dict] = []
+
+    for entry in reversed(raw):
+        if not isinstance(entry, dict):
+            continue
+
+        status = (entry.get("status") or "").strip().lower()
+        if status not in {"submitted", "failed"}:
+            continue
+
+        ts = (entry.get("timestamp") or "").strip()
+        time_display = ts
+        if ts:
+            try:
+                parsed = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                time_display = parsed.strftime("%Y-%m-%d %H:%M")
+            except ValueError:
+                pass
+
+        raw_report = entry.get("report") or {}
+        record = {
+            "time": time_display,
+            "title": (entry.get("title") or "").strip() or f"Job {entry.get('job_id') or ''}".strip(),
+            "company": (entry.get("company") or "").strip() or "-",
+            "note": (entry.get("note") or "").strip() or "-",
+            "job_url": (entry.get("job_url") or "").strip(),
+            "job_id": (entry.get("job_id") or "").strip(),
+            "report": raw_report,
+        }
+
+        # Extract dedicated HR messaging status from the combined note field.
+        note_text = record["note"]
+        hr_sep = " | HR: "
+        if hr_sep in note_text:
+            details, hr_status = note_text.split(hr_sep, 1)
+            record["note"] = details.strip() or "-"
+            record["hr_message_status"] = hr_status.strip() or "-"
+        else:
+            record["hr_message_status"] = "-"
+
+        if status == "submitted":
+            submitted_jobs.append(record)
+        else:
+            failed_jobs.append(record)
+
+        if len(submitted_jobs) >= limit and len(failed_jobs) >= limit:
+            break
+
+    return submitted_jobs[:limit], failed_jobs[:limit]
+
+
+def _load_generated_letters(user_id: int, limit: int = 40) -> list[dict[str, str]]:
+    """Load generated motivation/cover-letter files for dashboard download cards."""
+    letters_dir = USER_DATA_FOLDER / str(user_id) / "generated_letters"
+    if not letters_dir.exists():
+        return []
+
+    files: list[dict[str, str]] = []
+    try:
+        for p in sorted(letters_dir.glob("*"), key=lambda x: x.stat().st_mtime, reverse=True):
+            if not p.is_file():
+                continue
+            files.append(
+                {
+                    "name": p.name,
+                    "size_kb": f"{max(1, int(round(p.stat().st_size / 1024)))} KB",
+                    "modified": datetime.fromtimestamp(p.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
+                }
+            )
+            if len(files) >= limit:
+                break
+    except OSError:
+        return []
+
+    return files
+
+
+def _derive_counts_from_log(log_text: str) -> tuple[int, int, int]:
+    """Derive submitted/skipped/failed counters from run log lines."""
+    if not log_text:
+        return 0, 0, 0
+    submitted = len(re.findall(r"\[SUBMITTED\]", log_text))
+    skipped = len(re.findall(r"\[SKIPPED\]", log_text))
+    failed = len(re.findall(r"\[FAILED\]", log_text))
+    return submitted, skipped, failed
+
+
 def token_required(f):
     """Decorator for extension API endpoints — authenticates via Bearer token."""
     @wraps(f)
@@ -299,6 +439,7 @@ def api_ext_config(user):
         "work_auth_answer": profile.work_auth_answer,
         "keywords": profile.keywords_list,
         "locations": profile.locations_list,
+        "workplace_type": profile.workplace_type or "all",
         "max_applications": profile.max_applications,
         "posted_days_ago": profile.posted_days_ago,
     })
@@ -491,9 +632,29 @@ def dashboard():
     try:
         p = ensure_user_profile(user)
         runs = BotRun.query.filter_by(user_id=user.id).order_by(BotRun.started_at.desc()).limit(20).all()
+        failed_runs = (
+            BotRun.query
+            .filter(BotRun.user_id == user.id, BotRun.failures > 0)
+            .order_by(BotRun.started_at.desc())
+            .limit(15)
+            .all()
+        )
         total_submitted = db.session.query(db.func.sum(BotRun.submitted)).filter_by(user_id=user.id).scalar() or 0
         api_token = ensure_api_token(user)
-        return render_template("dashboard.html", user=user, p=p, runs=runs, total_submitted=total_submitted, api_token=api_token)
+        submitted_jobs, failed_jobs = _load_recent_job_events(user.id, limit=25)
+        generated_letters = _load_generated_letters(user.id, limit=40)
+        return render_template(
+            "dashboard.html",
+            user=user,
+            p=p,
+            runs=runs,
+            total_submitted=total_submitted,
+            api_token=api_token,
+            submitted_jobs=submitted_jobs,
+            failed_jobs=failed_jobs,
+            failed_runs=failed_runs,
+            generated_letters=generated_letters,
+        )
     except Exception:
         app.logger.exception("Dashboard render failed for user_id=%s", session.get("user_id"))
         flash("Dashboard failed to load. Please open Profile first, then return to Dashboard.", "warning")
@@ -516,8 +677,31 @@ def profile():
         p.experience_years = request.form.get("experience_years", "").strip()
         p.work_auth_answer = request.form.get("work_auth_answer", "").strip()
         p.salary_answer = request.form.get("salary_answer", "").strip()
+
+        # Extended profile fields
+        p.nationality = request.form.get("nationality", "").strip()
+        p.is_eu_citizen = bool(request.form.get("is_eu_citizen"))
+        p.willing_to_relocate = bool(request.form.get("willing_to_relocate"))
+        p.willing_to_work_onsite = bool(request.form.get("willing_to_work_onsite"))
+        p.willing_to_work_remote = bool(request.form.get("willing_to_work_remote"))
+        p.current_job_title = request.form.get("current_job_title", "").strip()
+        p.years_management_experience = request.form.get("years_management_experience", "0").strip()
+        p.highest_education = request.form.get("highest_education", "").strip()
+        p.field_of_study = request.form.get("field_of_study", "").strip()
+        p.english_proficiency = request.form.get("english_proficiency", "Professional").strip()
+        p.languages_spoken = request.form.get("languages_spoken", "").strip()
+        p.has_drivers_license = bool(request.form.get("has_drivers_license"))
+        p.drivers_license_category = request.form.get("drivers_license_category", "").strip()
+        p.linkedin_url = request.form.get("linkedin_url", "").strip()
+        p.github_url = request.form.get("github_url", "").strip()
+        p.portfolio_url = request.form.get("portfolio_url", "").strip()
+        p.gender = request.form.get("gender", "").strip()
+        p.has_disability = bool(request.form.get("has_disability"))
+        p.veteran_status = request.form.get("veteran_status", "No").strip()
         p.keywords = request.form.get("keywords", "").strip()
         p.search_locations = request.form.get("search_locations", "").strip()
+        workplace_type = (request.form.get("workplace_type", "all") or "all").strip().lower()
+        p.workplace_type = workplace_type if workplace_type in {"all", "remote", "hybrid", "on_site"} else "all"
         try:
             p.max_applications = int(request.form.get("max_applications", 25))
         except ValueError:
@@ -567,6 +751,21 @@ def cv_download():
     return send_from_directory(UPLOAD_FOLDER, p.cv_filename, as_attachment=True, download_name="cv.pdf")
 
 
+@app.get("/letters/download/<path:filename>")
+@login_required
+def download_generated_letter(filename: str):
+    """Download a generated motivation/cover-letter file for the logged-in user."""
+    if not filename or "/" in filename or "\\" in filename:
+        abort(400)
+
+    user = get_current_user()
+    letters_dir = USER_DATA_FOLDER / str(user.id) / "generated_letters"
+    if not letters_dir.exists():
+        abort(404)
+
+    return send_from_directory(letters_dir, filename, as_attachment=True, download_name=filename)
+
+
 # ─── Routes: Manual run ───────────────────────────────────────────────────────
 
 @app.get("/run")
@@ -602,6 +801,82 @@ def run_now():
         return redirect(url_for("dashboard"))
 
 
+@app.post("/network_now")
+@login_required
+def network_now():
+    """Trigger a LinkedIn networking campaign to connect with recruiters at big companies."""
+    try:
+        user = get_current_user()
+        p = ensure_user_profile(user)
+
+        if not p.linkedin_email or not p.linkedin_password_enc:
+            flash("Please set your LinkedIn credentials first.", "warning")
+            return redirect(url_for("profile"))
+
+        from bot_runner import run_networking_for_user_async
+        run_networking_for_user_async(user.id)
+        flash("Networking campaign started! The bot will connect with recruiters at top companies.", "info")
+        return redirect(url_for("dashboard"))
+    except Exception as exc:
+        app.logger.exception("Failed to start networking run for user_id=%s", session.get("user_id"))
+        flash(f"Could not start networking campaign: {exc}", "danger")
+        return redirect(url_for("dashboard"))
+
+
+@app.post("/retry_failures")
+@login_required
+def retry_failures():
+    try:
+        user = get_current_user()
+        p = ensure_user_profile(user)
+
+        if not p.linkedin_email or not p.linkedin_password_enc:
+            flash("Please set your LinkedIn credentials first.", "warning")
+            return redirect(url_for("profile"))
+        if not p.cv_filename:
+            flash("Please upload your CV first.", "warning")
+            return redirect(url_for("profile"))
+
+        from bot_runner import run_for_user_async_retry_failed
+        run_for_user_async_retry_failed(user.id)
+        flash("Retrying failed jobs — check the dashboard for progress.", "info")
+        return redirect(url_for("dashboard"))
+    except Exception as exc:
+        uid = session.get("user_id")
+        app.logger.exception("Failed to start retry run for user_id=%s", uid)
+        flash(f"Could not start retry run: {exc}", "danger")
+        return redirect(url_for("dashboard"))
+
+
+@app.post("/stop_run")
+@login_required
+def stop_run():
+    """Signal the currently running bot to stop gracefully after the current job."""
+    try:
+        user = get_current_user()
+        run = (
+            BotRun.query
+            .filter_by(user_id=user.id, status="running")
+            .order_by(BotRun.started_at.desc())
+            .first()
+        )
+        if run:
+            from bot_runner import request_stop
+            request_stop(run.id)
+            # Only append the note once to avoid duplicates on repeated clicks
+            note = "[User requested stop — will halt after current job]"
+            if note not in (run.log_snippet or ""):
+                run.log_snippet = ((run.log_snippet or "") + "\n" + note).strip()
+                db.session.commit()
+            flash("Stop signal sent — the bot will finish the current job and then halt.", "info")
+        else:
+            flash("No active run found.", "warning")
+    except Exception as exc:
+        app.logger.exception("Failed to stop run")
+        flash(f"Could not stop run: {exc}", "danger")
+    return redirect(url_for("dashboard"))
+
+
 @app.route("/api/run_status/<int:run_id>")
 @login_required
 def run_status(run_id: int):
@@ -613,11 +888,35 @@ def run_status(run_id: int):
     # Self-heal stale "running" rows even if the app process was interrupted.
     # This keeps the dashboard from showing "Running..." forever.
     if run.status == "running" and run.started_at:
-        if datetime.utcnow() - run.started_at > timedelta(minutes=20):
+        # If this run started before the current Flask process, the worker thread
+        # does not exist anymore (threads do not survive process restarts).
+        if run.started_at < PROCESS_START_UTC - timedelta(seconds=5):
+            run.status = "error"
+            run.finished_at = datetime.utcnow()
+            note = "Run interrupted by server restart; marked stale during status check."
+            run.log_snippet = (run.log_snippet + "\n" + note).strip() if run.log_snippet else note
+            db.session.commit()
+        elif datetime.utcnow() - run.started_at > timedelta(hours=8):
             run.status = "error"
             run.finished_at = datetime.utcnow()
             note = "Run marked stale during status check (timeout exceeded)."
             run.log_snippet = (run.log_snippet + "\n" + note).strip() if run.log_snippet else note
+            db.session.commit()
+
+    # Backfill counters from log for older runs that were left at 0/0/0.
+    if run.log_snippet:
+        sub_cnt, skip_cnt, fail_cnt = _derive_counts_from_log(run.log_snippet)
+        changed = False
+        if sub_cnt > (run.submitted or 0):
+            run.submitted = sub_cnt
+            changed = True
+        if skip_cnt > (run.skipped or 0):
+            run.skipped = skip_cnt
+            changed = True
+        if fail_cnt > (run.failures or 0):
+            run.failures = fail_cnt
+            changed = True
+        if changed:
             db.session.commit()
 
     return jsonify({
@@ -650,6 +949,8 @@ def ensure_schema_updates() -> None:
             if "users" not in inspector.get_table_names():
                 return
 
+            table_names = set(inspector.get_table_names())
+
             col_names = {c["name"] for c in inspector.get_columns("users")}
 
             if "api_token" not in col_names:
@@ -667,6 +968,18 @@ def ensure_schema_updates() -> None:
             elif dialect == "postgresql":
                 db.session.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_api_token ON users(api_token)"))
                 db.session.commit()
+
+            if "user_profiles" in table_names:
+                profile_cols = {c["name"] for c in inspector.get_columns("user_profiles")}
+                if "workplace_type" not in profile_cols:
+                    if dialect == "sqlite":
+                        db.session.execute(text("ALTER TABLE user_profiles ADD COLUMN workplace_type VARCHAR(16) DEFAULT 'all'"))
+                    elif dialect == "postgresql":
+                        db.session.execute(text("ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS workplace_type VARCHAR(16) DEFAULT 'all'"))
+                    db.session.commit()
+
+                db.session.execute(text("UPDATE user_profiles SET workplace_type='all' WHERE workplace_type IS NULL OR workplace_type=''"))
+                db.session.commit()
         except Exception as exc:
             app.logger.warning("Schema auto-update skipped: %s", exc)
 
@@ -675,14 +988,22 @@ def cleanup_stale_runs() -> None:
     """Mark interrupted running rows as error after server restarts/crashes."""
     with app.app_context():
         try:
-            cutoff = datetime.utcnow() - timedelta(minutes=30)
+            # Any running row started before this process boot is stale because
+            # worker threads from previous process instances are gone.
+            restart_cutoff = PROCESS_START_UTC - timedelta(seconds=5)
+            timeout_cutoff = datetime.utcnow() - timedelta(hours=8)
             stale = BotRun.query.filter(
                 BotRun.status == "running",
-                BotRun.started_at < cutoff,
+                or_(BotRun.started_at < restart_cutoff, BotRun.started_at < timeout_cutoff),
             ).all()
             if not stale:
                 return
             for run in stale:
+                if run.log_snippet:
+                    sub_cnt, skip_cnt, fail_cnt = _derive_counts_from_log(run.log_snippet)
+                    run.submitted = max(run.submitted or 0, sub_cnt)
+                    run.skipped = max(run.skipped or 0, skip_cnt)
+                    run.failures = max(run.failures or 0, fail_cnt)
                 run.status = "error"
                 run.finished_at = datetime.utcnow()
                 note = "Run marked stale after process restart/interruption."

@@ -23,6 +23,16 @@ from config import (
 )
 from bot import LinkedInAutoApplyBot
 
+# Maps run_id -> threading.Event; set() signals the bot to stop after the current job.
+_stop_flags: dict[int, threading.Event] = {}
+
+
+def request_stop(run_id: int) -> None:
+    """Signal the worker for run_id to stop gracefully after the current job."""
+    flag = _stop_flags.get(run_id)
+    if flag:
+        flag.set()
+
 
 def _resolve_app_module():
     """Return the live Flask app module to avoid duplicate SQLAlchemy instances.
@@ -69,11 +79,31 @@ def build_config_for_user(user_id: int) -> RuntimeConfig:
         work_authorization_italy=p.work_auth_answer or "",
         salary_hungary=p.salary_answer or "",
         salary_italy=p.salary_answer or "",
+        nationality=getattr(p, "nationality", "") or "",
+        is_eu_citizen=getattr(p, "is_eu_citizen", False) or False,
+        willing_to_relocate=getattr(p, "willing_to_relocate", False) or False,
+        willing_to_work_onsite=getattr(p, "willing_to_work_onsite", False) or False,
+        willing_to_work_remote=getattr(p, "willing_to_work_remote", True) if getattr(p, "willing_to_work_remote", None) is not None else True,
+        current_job_title=getattr(p, "current_job_title", "") or "",
+        years_management_experience=getattr(p, "years_management_experience", "0") or "0",
+        highest_education=getattr(p, "highest_education", "") or "",
+        field_of_study=getattr(p, "field_of_study", "") or "",
+        english_proficiency=getattr(p, "english_proficiency", "Professional") or "Professional",
+        languages_spoken=getattr(p, "languages_spoken", "") or "",
+        has_drivers_license=getattr(p, "has_drivers_license", False) or False,
+        drivers_license_category=getattr(p, "drivers_license_category", "") or "",
+        linkedin_url=getattr(p, "linkedin_url", "") or "",
+        github_url=getattr(p, "github_url", "") or "",
+        portfolio_url=getattr(p, "portfolio_url", "") or "",
+        gender=getattr(p, "gender", "") or "",
+        has_disability=getattr(p, "has_disability", False) or False,
+        veteran_status=getattr(p, "veteran_status", "No") or "No",
     )
 
     settings = BotSettings(
         keywords=p.keywords_list or ["Software Developer"],
         locations=p.locations_list or ["Hungary"],
+        workplace_type=(p.workplace_type or "all"),
         max_applications_per_run=p.max_applications,
         posted_days_ago=p.posted_days_ago,
         headless=True,
@@ -132,6 +162,14 @@ def _do_run(app, user_id: int, run_id: int) -> None:
 
                 bot = LinkedInAutoApplyBot(config, dry_run=False, resume=False)
 
+                # Register a stop flag so /stop_run can interrupt between jobs.
+                stop_flag = threading.Event()
+                _stop_flags[run_id] = stop_flag
+
+                def _check_stop():
+                    if stop_flag.is_set():
+                        bot.stop_requested = True
+
                 # Wire per-job callback so individual results appear in the log.
                 def _on_job_result(result: dict) -> None:
                     status = result.get("status", "?")
@@ -139,6 +177,17 @@ def _do_run(app, user_id: int, run_id: int) -> None:
                     company = (result.get("company") or "")[:40]
                     note = result.get("note") or ""
                     _log(f"[{status.upper()}] {title} @ {company} — {note}")
+
+                    _check_stop()  # propagate stop flag to bot after each job result
+                    # Keep live dashboard counters in sync while a run is active.
+                    normalized = str(status).strip().lower()
+                    if normalized == "submitted":
+                        bot_run.submitted = (bot_run.submitted or 0) + 1
+                    elif normalized == "skipped":
+                        bot_run.skipped = (bot_run.skipped or 0) + 1
+                    elif normalized == "failed":
+                        bot_run.failures = (bot_run.failures or 0) + 1
+
                     bot_run.log_snippet = "\n".join(log_lines)
                     db.session.commit()
 
@@ -150,8 +199,12 @@ def _do_run(app, user_id: int, run_id: int) -> None:
                 bot_run.submitted = stats.get("submitted", 0)
                 bot_run.skipped = stats.get("skipped", 0)
                 bot_run.failures = stats.get("failures", 0)
-                _log(f"Done. submitted={bot_run.submitted} skipped={bot_run.skipped} failures={bot_run.failures}")
-                bot_run.status = "done"
+                if stop_flag.is_set():
+                    _log(f"Stopped by user. submitted={bot_run.submitted} skipped={bot_run.skipped} failures={bot_run.failures}")
+                    bot_run.status = "stopped"
+                else:
+                    _log(f"Done. submitted={bot_run.submitted} skipped={bot_run.skipped} failures={bot_run.failures}")
+                    bot_run.status = "done"
 
             except Exception as exc:
                 _log(f"ERROR: {exc}")
@@ -160,6 +213,11 @@ def _do_run(app, user_id: int, run_id: int) -> None:
                 bot_run.status = "error"
 
             finally:
+                # Clean up stop flag
+                _stop_flags.pop(run_id, None)
+                if bot_run.status == "running":
+                    # Only auto-close to "done" if the user didn't stop it
+                    bot_run.status = "done"
                 bot_run.finished_at = datetime.utcnow()
                 bot_run.log_snippet = "\n".join(log_lines)
                 db.session.commit()
@@ -219,7 +277,7 @@ def run_for_user_async(user_id: int) -> int:
     )
     if existing:
         age = datetime.utcnow() - existing.started_at
-        if age < timedelta(minutes=20):
+        if age < timedelta(hours=8):
             return existing.id
         existing.status = "error"
         existing.finished_at = datetime.utcnow()
@@ -261,8 +319,16 @@ def run_for_user_async(user_id: int) -> int:
     def timeout_watchdog():
         """Monitor run timeout and force-close if it exceeds max duration."""
         import time
-        max_duration_seconds = 15 * 60  # 15 minutes
-        check_interval = 30  # Check every 30 seconds
+        # Give 4 min per application + 10 min overhead, capped between 30 min and 8 hours.
+        try:
+            with app.app_context():
+                app_mod2 = _resolve_app_module()
+                _up = app_mod2.UserProfile.query.filter_by(user_id=user_id).first()
+                max_apps = (_up.max_applications if _up and _up.max_applications else 25)
+        except Exception:
+            max_apps = 25
+        max_duration_seconds = min(max(30 * 60, max_apps * 4 * 60 + 10 * 60), 8 * 60 * 60)
+        check_interval = 60  # Check every 60 seconds
         iterations = 0
         while iterations < (max_duration_seconds // check_interval) + 1:
             time.sleep(check_interval)
@@ -294,5 +360,76 @@ def run_for_user_async(user_id: int) -> int:
     wd.start()
 
     return run_id
+
+
+def run_for_user_async_retry_failed(user_id: int) -> int:
+    """
+    Remove all 'failed' entries from the user's applied_jobs.json so the bot
+    will attempt those jobs again, then start a normal async run.
+    Failed entries are archived first so the dashboard can still show them.
+    Returns the new run_id.
+    """
+    ud = _user_dir(user_id)
+    applied_log = ud / "applied_jobs.json"
+    archive_log = ud / "failed_jobs_archive.json"
+    if applied_log.exists():
+        try:
+            data = json.loads(applied_log.read_text(encoding="utf-8"))
+            failed = [j for j in data if isinstance(j, dict) and j.get("status") == "failed"]
+            cleaned = [j for j in data if not (isinstance(j, dict) and j.get("status") == "failed")]
+
+            if failed:
+                try:
+                    existing_archive = json.loads(archive_log.read_text(encoding="utf-8")) if archive_log.exists() else []
+                    if not isinstance(existing_archive, list):
+                        existing_archive = []
+                except Exception:
+                    existing_archive = []
+
+                archived_at = datetime.utcnow().isoformat() + "Z"
+                for entry in failed:
+                    entry_copy = dict(entry)
+                    entry_copy["archived_at"] = archived_at
+                    existing_archive.append(entry_copy)
+                archive_log.write_text(json.dumps(existing_archive, ensure_ascii=False, indent=2), encoding="utf-8")
+
+            applied_log.write_text(json.dumps(cleaned, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            pass  # If corrupt, leave file untouched
+    return run_for_user_async(user_id)
+
+
+def run_networking_for_user_async(user_id: int) -> None:
+    """
+    Run the LinkedIn networking campaign (connect with recruiters at big companies)
+    for the given user in a background thread. No BotRun record is created —
+    this is a fire-and-forget side task that logs to stderr.
+    """
+    if os.environ.get("RENDER") or os.environ.get("BOT_DISABLED"):
+        return  # Cannot run on cloud servers
+
+    from flask import current_app
+    app = current_app._get_current_object()
+
+    def _networking_worker():
+        import sys
+        try:
+            with app.app_context():
+                config = build_config_for_user(user_id)
+                bot = LinkedInAutoApplyBot(config, dry_run=False, resume=False)
+                result = bot.run_networking_campaign()
+                sent = result.get("stats", {}).get("sent", 0)
+                skipped = result.get("stats", {}).get("skipped", 0)
+                failures = result.get("stats", {}).get("failures", 0)
+                print(
+                    f"[networking user_id={user_id}] sent={sent} skipped={skipped} failures={failures}",
+                    file=sys.stderr,
+                )
+        except Exception as exc:
+            import traceback
+            print(f"[networking ERROR user_id={user_id}] {exc}\n{traceback.format_exc()}", file=sys.stderr)
+
+    t = threading.Thread(target=_networking_worker, daemon=True)
+    t.start()
 
 

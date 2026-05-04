@@ -64,10 +64,165 @@
     </div>
   </div>
 
+  <!-- ── Screening Questions ───────────────────────────────────────────────── -->
+  <div class="card mb-4">
+    <div class="card-header fw-semibold" style="background:#6f42c1;color:white">
+      <i class="bi bi-patch-question-fill me-1"></i> 2. Screening Questions
+    </div>
+    <div class="card-body">
+      <p class="text-muted small mb-3">Used when LinkedIn asks additional questions during Easy Apply.</p>
+      <div class="row g-3">
+
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">Nationality</label>
+          <input type="text" name="nationality" class="form-control"
+                 value="{{ p.nationality }}" placeholder="e.g. Egyptian">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">Gender</label>
+          <select name="gender" class="form-select">
+            <option value="" {{ "selected" if not p.gender }}>Prefer not to say</option>
+            <option value="Male" {{ "selected" if p.gender == 'Male' }}>Male</option>
+            <option value="Female" {{ "selected" if p.gender == 'Female' }}>Female</option>
+            <option value="Non-binary" {{ "selected" if p.gender == 'Non-binary' }}>Non-binary</option>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">Veteran Status</label>
+          <select name="veteran_status" class="form-select">
+            <option value="No" {{ "selected" if (p.veteran_status or 'No') == 'No' }}>No</option>
+            <option value="Yes" {{ "selected" if p.veteran_status == 'Yes' }}>Yes</option>
+            <option value="Prefer not to say" {{ "selected" if p.veteran_status == 'Prefer not to say' }}>Prefer not to say</option>
+          </select>
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">Current Job Title</label>
+          <input type="text" name="current_job_title" class="form-control"
+                 value="{{ p.current_job_title }}" placeholder="e.g. Full Stack Developer">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">Highest Education Level</label>
+          <select name="highest_education" class="form-select">
+            <option value="" {{ "selected" if not p.highest_education }}></option>
+            <option value="High School" {{ "selected" if p.highest_education == 'High School' }}>High School</option>
+            <option value="Associate's Degree" {{ "selected" if p.highest_education == "Associate's Degree" }}>Associate's Degree</option>
+            <option value="Bachelor's Degree" {{ "selected" if p.highest_education == "Bachelor's Degree" }}>Bachelor's Degree</option>
+            <option value="Master's Degree" {{ "selected" if p.highest_education == "Master's Degree" }}>Master's Degree</option>
+            <option value="PhD" {{ "selected" if p.highest_education == 'PhD' }}>PhD</option>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">Field of Study</label>
+          <input type="text" name="field_of_study" class="form-control"
+                 value="{{ p.field_of_study }}" placeholder="e.g. Computer Science Engineering">
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">English Proficiency</label>
+          <select name="english_proficiency" class="form-select">
+            <option value="Professional" {{ "selected" if (p.english_proficiency or 'Professional') == 'Professional' }}>Professional (C1/C2)</option>
+            <option value="Conversational" {{ "selected" if p.english_proficiency == 'Conversational' }}>Conversational (B2)</option>
+            <option value="Basic" {{ "selected" if p.english_proficiency == 'Basic' }}>Basic (A2/B1)</option>
+            <option value="Native" {{ "selected" if p.english_proficiency == 'Native' }}>Native</option>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">Years of Management Experience</label>
+          <input type="text" name="years_management_experience" class="form-control"
+                 value="{{ p.years_management_experience or '0' }}" placeholder="0">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">Languages Spoken</label>
+          <input type="text" name="languages_spoken" class="form-control"
+                 value="{{ p.languages_spoken }}"
+                 placeholder="Arabic (Native), English (Professional), Italian (Professional)">
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">LinkedIn Profile URL</label>
+          <input type="text" name="linkedin_url" class="form-control"
+                 value="{{ p.linkedin_url }}" placeholder="https://linkedin.com/in/your-profile">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">GitHub URL</label>
+          <input type="text" name="github_url" class="form-control"
+                 value="{{ p.github_url }}" placeholder="https://github.com/you">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">Portfolio URL</label>
+          <input type="text" name="portfolio_url" class="form-control"
+                 value="{{ p.portfolio_url }}" placeholder="https://yoursite.com">
+        </div>
+
+        <!-- Yes/No toggles -->
+        <div class="col-12">
+          <div class="row g-2 mt-1">
+            <div class="col-auto">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="is_eu_citizen" id="euSwitch"
+                       {{ "checked" if p.is_eu_citizen else "" }}>
+                <label class="form-check-label fw-semibold" for="euSwitch">EU Citizen</label>
+              </div>
+            </div>
+            <div class="col-auto">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="willing_to_relocate" id="relocateSwitch"
+                       {{ "checked" if p.willing_to_relocate else "" }}>
+                <label class="form-check-label fw-semibold" for="relocateSwitch">Willing to Relocate</label>
+              </div>
+            </div>
+            <div class="col-auto">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="willing_to_work_onsite" id="onsiteSwitch"
+                       {{ "checked" if p.willing_to_work_onsite else "" }}>
+                <label class="form-check-label fw-semibold" for="onsiteSwitch">Willing to Work Onsite</label>
+              </div>
+            </div>
+            <div class="col-auto">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="willing_to_work_remote" id="remoteSwitch"
+                       {{ "checked" if p.willing_to_work_remote else "" }}>
+                <label class="form-check-label fw-semibold" for="remoteSwitch">Open to Remote / Hybrid</label>
+              </div>
+            </div>
+            <div class="col-auto">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="has_drivers_license" id="licenseSwitch"
+                       {{ "checked" if p.has_drivers_license else "" }}>
+                <label class="form-check-label fw-semibold" for="licenseSwitch">Has Driver's License</label>
+              </div>
+            </div>
+            <div class="col-auto">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="has_disability" id="disabilitySwitch"
+                       {{ "checked" if p.has_disability else "" }}>
+                <label class="form-check-label fw-semibold" for="disabilitySwitch">Has Disability</label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-3" id="licenseCatGroup" style="{{ '' if p.has_drivers_license else 'display:none' }}">
+          <label class="form-label fw-semibold">License Category</label>
+          <input type="text" name="drivers_license_category" class="form-control"
+                 value="{{ p.drivers_license_category }}" placeholder="B">
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('licenseSwitch').addEventListener('change', function() {
+      document.getElementById('licenseCatGroup').style.display = this.checked ? '' : 'none';
+    });
+  </script>
+
   <!-- ── CV Upload ─────────────────────────────────────────────────────────── -->
   <div class="card mb-4">
     <div class="card-header bg-success text-white fw-semibold">
-      <i class="bi bi-file-earmark-pdf-fill me-1"></i> 2. Your CV (PDF)
+      <i class="bi bi-file-earmark-pdf-fill me-1"></i> 3. Your CV (PDF)
     </div>
     <div class="card-body">
       {% if p.cv_filename %}
@@ -91,7 +246,7 @@
   <!-- ── Job Search Settings ───────────────────────────────────────────────── -->
   <div class="card mb-4">
     <div class="card-header bg-info text-white fw-semibold">
-      <i class="bi bi-search me-1"></i> 3. Job Search Settings
+      <i class="bi bi-search me-1"></i> 4. Job Search Settings
     </div>
     <div class="card-body">
       <div class="row g-3">
@@ -104,14 +259,24 @@
         <div class="col-md-6">
           <label class="form-label fw-semibold">Search Locations *</label>
           <textarea name="search_locations" class="form-control" rows="4"
-                    placeholder="One location per line:&#10;Hungary&#10;Budapest&#10;Remote">{{ p.search_locations }}</textarea>
-          <div class="form-text">One location per line.</div>
+                    placeholder="Use commas or new lines:&#10;Hungary, Budapest, Remote">{{ p.search_locations }}</textarea>
+          <div class="form-text">You can enter multiple locations on one line using commas, or use one per line.</div>
         </div>
         <div class="col-md-4">
           <label class="form-label fw-semibold">Max Applications Per Day</label>
           <input type="number" name="max_applications" class="form-control"
                  value="{{ p.max_applications }}" min="1" max="50">
           <div class="form-text">Recommended: 10–25 to avoid LinkedIn limits.</div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">Workplace Type</label>
+          <select name="workplace_type" class="form-select">
+            <option value="all" {{ "selected" if (p.workplace_type or 'all') == 'all' else "" }}>All</option>
+            <option value="remote" {{ "selected" if p.workplace_type == 'remote' else "" }}>Remote</option>
+            <option value="hybrid" {{ "selected" if p.workplace_type == 'hybrid' else "" }}>Hybrid</option>
+            <option value="on_site" {{ "selected" if p.workplace_type == 'on_site' else "" }}>On-site</option>
+          </select>
+          <div class="form-text">Filter jobs by where work happens: remote, hybrid, on-site, or all.</div>
         </div>
         <div class="col-md-4">
           <label class="form-label fw-semibold">Posted Within (days)</label>
@@ -136,7 +301,7 @@
   <!-- ── LinkedIn Credentials ──────────────────────────────────────────────── -->
   <div class="card mb-4">
     <div class="card-header bg-warning fw-semibold">
-      <i class="bi bi-linkedin me-1"></i> 4. LinkedIn Credentials
+      <i class="bi bi-linkedin me-1"></i> 5. LinkedIn Credentials
     </div>
     <div class="card-body">
       <div class="alert alert-info small py-2 mb-3">

@@ -1,0 +1,3 @@
+# Paste LinkedIn job URLs from Gmail job alerts here (one URL per line).
+# Example:
+# https://www.linkedin.com/jobs/view/1234567890/

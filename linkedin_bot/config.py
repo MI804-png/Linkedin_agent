@@ -25,10 +25,45 @@ class CandidateProfile:
     location: str = "Kecskemet, Hungary"
     graduation_year: str = "2027"
     total_experience_years: str = "5"
+
+    # Work authorization
     work_authorization_hungary: str = "Yes, I have a valid Hungarian student residence permit."
     work_authorization_italy: str = "I may require sponsorship; open to discussion."
+    is_eu_citizen: bool = False          # Not an EU citizen
+    nationality: str = "Egyptian"        # Used for nationality questions
+
+    # Compensation
     salary_hungary: str = "1000000 HUF/month"
-    salary_italy: str = "Negotiable"
+    salary_italy: str = "35000"
+
+    # Job preferences
+    willing_to_relocate: bool = True
+    willing_to_work_onsite: bool = False
+    willing_to_work_remote: bool = True
+    current_job_title: str = "Full Stack Developer"
+    years_management_experience: str = "0"
+
+    # Education
+    highest_education: str = "Bachelor's Degree"
+    field_of_study: str = "Computer Science Engineering"
+
+    # Languages
+    english_proficiency: str = "Professional"  # Professional / C1 / Advanced
+    languages_spoken: str = "Arabic (Native), English (Professional), Italian (Professional)"
+
+    # Documents & licenses
+    has_drivers_license: bool = False
+    drivers_license_category: str = ""
+
+    # Online presence
+    linkedin_url: str = "https://www.linkedin.com/in/mikhael-nabil"
+    github_url: str = "https://github.com/mikhael-nabil"
+    portfolio_url: str = ""   # Leave blank to fall back to github_url
+
+    # Sensitive / optional — left blank means the bot won't auto-fill them
+    gender: str = "Male"
+    has_disability: bool = False
+    veteran_status: str = "No"  # "No" / "Yes" / "Prefer not to say"
 
 
 @dataclass
@@ -45,12 +80,16 @@ class BotSettings:
     locations: list[str] = field(
         default_factory=lambda: ["Hungary", "Budapest", "Italy", "Milan", "Rome"]
     )
+    workplace_type: str = "all"  # all/remote/hybrid/on_site
     max_applications_per_run: int = 25
     retries_per_job: int = 2
     posted_days_ago: int = 7
+    prioritize_recommended_jobs: bool = True
+    scan_linkedin_notifications: bool = True
     headless: bool = False
-    random_wait_min_seconds: float = 1.5
-    random_wait_max_seconds: float = 3.8
+    max_network_per_run: int = 20   # max connection requests per networking campaign run
+    random_wait_min_seconds: float = 0.5
+    random_wait_max_seconds: float = 1.2
 
 
 @dataclass
@@ -61,6 +100,8 @@ class RuntimePaths:
     run_history_log: Path = BASE_DIR / "run_history.json"
     state_path: Path = BASE_DIR / "state.json"
     browser_state_path: Path = BASE_DIR / "playwright_state.json"
+    gmail_alert_links_path: Path = BASE_DIR / "priority_job_links.txt"
+    study_guides_dir: Path = BASE_DIR / "study_guides"
 
 
 @dataclass

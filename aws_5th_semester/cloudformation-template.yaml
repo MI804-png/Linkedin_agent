@@ -1,0 +1,516 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Complete AWS Project Setup - VPC, EC2, RDS, S3, ALB with Docker'
+
+Parameters:
+  KeyPairName:
+    Description: Name of an existing EC2 KeyPair
+    Type: String
+    Default: Key
+  
+  DBPassword:
+    Description: Password for RDS database (min 8 characters)
+    Type: String
+    NoEcho: true
+    Default: MyPassword123
+    MinLength: 8
+    MaxLength: 41
+    AllowedPattern: '[a-zA-Z0-9]*'
+
+  YourIPAddress:
+    Description: Your IP address for SSH access
+    Type: String
+    Default: 0.0.0.0/0
+    Default: 0.0.0.0/0
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+
+Resources:
+  # VPC
+  MyVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: MyProject-VPC
+
+  # Internet Gateway
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: MyProject-IGW
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MyVPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # Public Subnets
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: MyProject-Public-1a
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: MyProject-Public-1b
+
+  # Private Subnets for RDS
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: MyProject-Private-1a
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.4.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: MyProject-Private-1b
+
+  # Route Table
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name
+          Value: MyProject-Public-RT
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  SubnetRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  # Security Groups
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: MyProject-LB-SG
+      GroupDescription: Security group for Application Load Balancer
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: MyProject-LB-SG
+
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: MyProject-EC2-SG
+      GroupDescription: Security group for EC2 instances
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref YourIPAddress
+      Tags:
+        - Key: Name
+          Value: MyProject-EC2-SG
+
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: MyProject-RDS-SG
+      GroupDescription: Security group for RDS database
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref EC2SecurityGroup
+      Tags:
+        - Key: Name
+          Value: MyProject-RDS-SG
+
+  # S3 Bucket
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'myproject-storage-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Name
+          Value: MyProject-Storage
+
+  S3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref S3Bucket
+      PolicyDocument:
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: '*'
+            Action: 's3:GetObject'
+            Resource: !Sub '${S3Bucket.Arn}/*'
+
+  # RDS Subnet Group
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupName: myproject-db-subnet-group
+      DBSubnetGroupDescription: Subnet group for RDS database
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: MyProject-DB-Subnet-Group
+
+  # RDS Database
+  RDSDatabase:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: myproject-db
+      DBName: myprojectdb
+      Engine: mysql
+      EngineVersion: '8.0'
+      DBInstanceClass: db.t3.micro
+      AllocatedStorage: 20
+      StorageType: gp2
+      MasterUsername: admin
+      MasterUserPassword: !Ref DBPassword
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      PubliclyAccessible: false
+      BackupRetentionPeriod: 1
+      Tags:
+        - Key: Name
+          Value: MyProject-DB
+
+  # EC2 Instance 1 - Web UI
+  WebUIInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Sub '{{resolve:ssm:/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id}}'
+      InstanceType: t3.micro
+      KeyName: !Ref KeyPairName
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: 0
+          SubnetId: !Ref PublicSubnet1
+          GroupSet:
+            - !Ref EC2SecurityGroup
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          apt update
+          apt upgrade -y
+          apt install docker.io -y
+          systemctl start docker
+          systemctl enable docker
+          usermod -aG docker ubuntu
+
+          # Create simple web page
+          mkdir -p /home/ubuntu/webapp
+          cat > /home/ubuntu/webapp/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>My AWS Project - Web UI</title>
+              <style>
+                  body { font-family: Arial; text-align: center; padding: 50px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+                  h1 { color: #FF9900; }
+                  .container { background: white; padding: 40px; border-radius: 15px; max-width: 700px; margin: 0 auto; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+                  .info { background: #f8f9fa; padding: 15px; margin: 20px 0; border-radius: 8px; }
+                  .status { color: #28a745; font-weight: bold; }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <h1>🚀 Welcome to My AWS Project!</h1>
+                  <h2>Web UI Server</h2>
+                  <div class="info">
+                      <p><strong>Instance:</strong> Web-UI</p>
+                      <p><strong>Status:</strong> <span class="status">Running with Docker</span></p>
+                      <p><strong>Region:</strong> EU-West-1 (Ireland)</p>
+                  </div>
+                  <p>This application is running on:</p>
+                  <ul style="text-align: left; display: inline-block;">
+                      <li>✅ Amazon EC2 Instance</li>
+                      <li>✅ Docker Container</li>
+                      <li>✅ Application Load Balancer</li>
+                      <li>✅ Custom VPC</li>
+                  </ul>
+              </div>
+          </body>
+          </html>
+          EOF
+
+          cat > /home/ubuntu/webapp/Dockerfile << 'EOF'
+          FROM ubuntu:22.04
+          RUN apt update && apt upgrade -y && apt install apache2 -y
+          COPY index.html /var/www/html/index.html
+          EXPOSE 80
+          CMD ["apachectl", "-D", "FOREGROUND"]
+          EOF
+
+          # Build and run Docker container
+          cd /home/ubuntu/webapp
+          docker build -t webapp .
+          docker run -d -p 80:80 --name webapp --restart always webapp
+      Tags:
+        - Key: Name
+          Value: MyProject-Web-UI
+
+  # EC2 Instance 2 - API
+  APIInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Sub '{{resolve:ssm:/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id}}'
+      InstanceType: t3.micro
+      KeyName: !Ref KeyPairName
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: 0
+          SubnetId: !Ref PublicSubnet2
+          GroupSet:
+            - !Ref EC2SecurityGroup
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          apt update
+          apt upgrade -y
+          apt install docker.io -y
+          systemctl start docker
+          systemctl enable docker
+          usermod -aG docker ubuntu
+
+          # Create simple API
+          mkdir -p /home/ubuntu/api
+          cat > /home/ubuntu/api/server.js << 'EOF'
+          const http = require('http');
+          const hostname = '0.0.0.0';
+          const port = 3000;
+
+          const server = http.createServer((req, res) => {
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.end(JSON.stringify({
+              message: 'Hello from API Server!',
+              status: 'running',
+              instance: 'API',
+              database: '${RDSDatabase.Endpoint.Address}',
+              region: 'eu-west-1',
+              timestamp: new Date().toISOString()
+            }, null, 2));
+          });
+
+          server.listen(port, hostname, () => {
+            console.log(`API Server running at http://${!hostname}:${!port}/`);
+          });
+          EOF
+
+          cat > /home/ubuntu/api/Dockerfile << 'EOF'
+          FROM node:18-alpine
+          WORKDIR /app
+          COPY server.js .
+          EXPOSE 3000
+          CMD ["node", "server.js"]
+          EOF
+
+          # Build and run Docker container
+          cd /home/ubuntu/api
+          docker build -t api .
+          docker run -d -p 3000:3000 --name api --restart always api
+      Tags:
+        - Key: Name
+          Value: MyProject-API
+
+  # Application Load Balancer
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: MyProject-ALB
+      Scheme: internet-facing
+      Type: application
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      SecurityGroups:
+        - !Ref LoadBalancerSecurityGroup
+      Tags:
+        - Key: Name
+          Value: MyProject-ALB
+
+  # Target Group for Web UI
+  WebTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: MyProject-Web-TG
+      Port: 80
+      Protocol: HTTP
+      VpcId: !Ref MyVPC
+      HealthCheckEnabled: true
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Targets:
+        - Id: !Ref WebUIInstance
+          Port: 80
+      Tags:
+        - Key: Name
+          Value: MyProject-Web-TG
+
+  # Target Group for API
+  APITargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: MyProject-API-TG
+      Port: 3000
+      Protocol: HTTP
+      VpcId: !Ref MyVPC
+      HealthCheckEnabled: true
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Targets:
+        - Id: !Ref APIInstance
+          Port: 3000
+      Tags:
+        - Key: Name
+          Value: MyProject-API-TG
+
+  # ALB Listener for Web UI (Port 80)
+  WebListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref WebTargetGroup
+
+  # ALB Listener Rule for API (Port 3000)
+  APIListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref WebListener
+      Priority: 1
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /api/*
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref APITargetGroup
+
+Outputs:
+  LoadBalancerDNS:
+    Description: DNS name of the Application Load Balancer
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+    Export:
+      Name: !Sub '${AWS::StackName}-ALB-DNS'
+
+  WebUIURL:
+    Description: URL to access Web UI
+    Value: !Sub 'http://${ApplicationLoadBalancer.DNSName}'
+
+  APIURL:
+    Description: URL to access API (use /api/ path or direct EC2 IP:3000)
+    Value: !Sub 'http://${APIInstance.PublicIp}:3000'
+
+  RDSEndpoint:
+    Description: RDS Database Endpoint
+    Value: !GetAtt RDSDatabase.Endpoint.Address
+
+  S3BucketName:
+    Description: S3 Bucket Name
+    Value: !Ref S3Bucket
+
+  S3BucketURL:
+    Description: S3 Bucket URL
+    Value: !Sub 'https://${S3Bucket}.s3.${AWS::Region}.amazonaws.com'
+
+  WebUIInstanceIP:
+    Description: Public IP of Web UI Instance
+    Value: !GetAtt WebUIInstance.PublicIp
+
+  APIInstanceIP:
+    Description: Public IP of API Instance
+    Value: !GetAtt APIInstance.PublicIp
+
+  VPCId:
+    Description: VPC ID
+    Value: !Ref MyVPC
+
+  DatabaseName:
+    Description: Database Name
+    Value: myprojectdb
+
+  DatabaseUsername:
+    Description: Database Username
+    Value: admin

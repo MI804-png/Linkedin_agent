@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LinkedIn Cover Photo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: #f0f0f0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .linkedin-cover {
+            width: 1500px;
+            height: 500px;
+            background: linear-gradient(135deg, #0066cc 0%, #004399 50%, #003366 100%);
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+        
+        /* Decorative elements */
+        .shape-1 {
+            position: absolute;
+            width: 400px;
+            height: 400px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 50%;
+            top: -100px;
+            right: -100px;
+        }
+        
+        .shape-2 {
+            position: absolute;
+            width: 300px;
+            height: 300px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 50%;
+            bottom: -50px;
+            left: -50px;
+        }
+        
+        .shape-3 {
+            position: absolute;
+            width: 200px;
+            height: 200px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 50%;
+            top: 50%;
+            left: 10%;
+        }
+        
+        /* Content */
+        .content {
+            position: relative;
+            z-index: 10;
+            height: 100%;
+            padding: 60px 80px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            color: white;
+        }
+        
+        .title {
+            font-size: 54px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            letter-spacing: -0.5px;
+        }
+        
+        .subtitle {
+            font-size: 24px;
+            font-weight: 300;
+            margin-bottom: 30px;
+            opacity: 0.95;
+            max-width: 600px;
+        }
+        
+        .projects {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+            flex-wrap: wrap;
+        }
+        
+        .project-tag {
+            background: rgba(255,255,255,0.2);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            border: 1px solid rgba(255,255,255,0.3);
+            backdrop-filter: blur(10px);
+        }
+        
+        .location {
+            position: absolute;
+            bottom: 40px;
+            right: 80px;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .divider {
+            width: 50px;
+            height: 3px;
+            background: rgba(255,255,255,0.4);
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="linkedin-cover">
+        <div class="shape-1"></div>
+        <div class="shape-2"></div>
+        <div class="shape-3"></div>
+        
+        <div class="content">
+            <div class="divider"></div>
+            <div class="title">Mikhael Nabil</div>
+            <div class="subtitle">Full Stack Developer | Web & Desktop Applications | Open to Opportunities</div>
+            
+            <div class="projects">
+                <div class="project-tag">💻 Restaurant Website</div>
+                <div class="project-tag">🚚 Delivery Service</div>
+                <div class="project-tag">✅ Task Management</div>
+                <div class="project-tag">🔧 Java | PHP | JavaScript</div>
+            </div>
+        </div>
+        
+        <div class="location">📍 Kecskemét, Hungary</div>
+    </div>
+</body>
+</html>

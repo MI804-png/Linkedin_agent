@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+playwright_state.json
+run_history.json
+applied_jobs.json
+state.json
+logs/

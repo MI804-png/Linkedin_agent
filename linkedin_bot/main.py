@@ -16,6 +16,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--headless", action="store_true", help="Run browser in headless mode.")
     parser.add_argument("--limit", type=int, default=None, help="Max processed jobs in this run.")
     parser.add_argument("--validate", action="store_true", help="Validate local setup without opening browser.")
+    parser.add_argument("--network", action="store_true", help="Run LinkedIn networking campaign (connect with recruiters at big companies).")
+    parser.add_argument("--interviews", action="store_true", help="Scan LinkedIn messages for interview invites and generate study guides.")
     return parser.parse_args()
 
 
@@ -44,6 +46,38 @@ def run_validation() -> int:
 
 def main() -> int:
     args = parse_args()
+
+    if args.network:
+        try:
+            config = load_runtime_config(headless=args.headless)
+        except MissingCredentialError as exc:
+            print(str(exc))
+            return 2
+        bot = LinkedInAutoApplyBot(config, dry_run=False, resume=False)
+        try:
+            result = bot.run_networking_campaign()
+        except Exception as exc:
+            print(f"Networking run failed: {exc}")
+            return 1
+        print("Networking run completed")
+        print(json.dumps(result, indent=2))
+        return 0
+
+    if args.interviews:
+        try:
+            config = load_runtime_config(headless=args.headless)
+        except MissingCredentialError as exc:
+            print(str(exc))
+            return 2
+        bot = LinkedInAutoApplyBot(config, dry_run=False, resume=False)
+        try:
+            result = bot.run_interview_prep()
+        except Exception as exc:
+            print(f"Interview prep run failed: {exc}")
+            return 1
+        print("\nInterview prep completed")
+        print(json.dumps(result, indent=2))
+        return 0
 
     if args.validate:
         return run_validation()

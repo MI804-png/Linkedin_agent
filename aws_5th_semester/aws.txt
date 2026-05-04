@@ -1,0 +1,14 @@
+As mentioned earlier in the lab, by the end of the semester you will need to prepare documentation that meets the following criteria (only 5 of these need to be fulfilled!) and make a presentation to me at the 12th week showing your work. This can be done in teams (maximum 3 members) or individually. You must first discuss your implementation with me — either after class, during breaks, or via Teams — and then register it in the AWS_work spreadsheet!
+Please think this through and discuss it with me by the end of week 3!
+Of course, you are allowed to use generative artificial intelligence, but you must indicate the sources and source code that were created using it! The document should be at least 10 pages long (not including the cover page and references).
+ 
+The project must include:
+ASG and LB
+Storage on S3
+At least 2 EC2 services (e.g. API, UI)
+Use of RDS
+Use of VPC
+Application running in a Docker environment (can be in AWS ECS)
+A serverless solution
+Use of some kind of orchestrator (Kubernetes, Swarm, etc. – built-in versions are also fine)
+https://youtu.be/YJQJO2E8yho
