@@ -4724,3 +4724,1214 @@ class LinkedInAutoApplyBot:
             + self.stats["failures"]
         )
         return processed >= self.limit
+
+    # Indeed / Glassdoor are excluded â€” they CAPTCHA-block automated browsers.
+
+    _DIRECT_EXTERNAL_SITES: list[dict] = [
+        {
+            "name": "WeWorkRemotely",
+            "search_url": "https://weworkremotely.com/remote-jobs/search?term={keywords}",
+            "card_selectors": ["section.jobs ul li:not(.view-all)", "article"],
+            "card_selectors": ["a[href*='/remote-jobs/']", "section.jobs ul li:not(.view-all)", "article"],
+            "apply_btn_selectors": [
+                "a:has-text('Apply for this position')",
+                "a:has-text('Apply')",
+                ".apply-link",
+            ],
+            "next_page_selector": None,
+        },
+        {
+            "name": "RemoteOK",
+            "search_url": "https://remoteok.com/remote-{kw_slug}-jobs",
+            "card_selectors": ["tr[data-id]", "tr.job"],
+            "apply_btn_selectors": [
+                "a.button:has-text('Apply')",
+                "a[class*='apply']",
+                "a:has-text('Apply')",
+            ],
+            "next_page_selector": None,
+        },
+        {
+            "name": "EuropeRemoteJobs",
+            "search_url": "https://europeremotejobs.com/remote-jobs/?s={keywords}",
+            "card_selectors": [".job_listing", "li.job_listing", ".job-listing", "article", "h2 a[href]"],
+            "apply_btn_selectors": [
+                "a.apply_button",
+                "a:has-text('Apply for job')",
+                "a:has-text('Apply')",
+                "a:has-text('Apply Now')",
+                "a[href*='apply']",
+            ],
+            "next_page_selector": "a.next",
+        },
+        {
+            "name": "Jobicy",
+            "search_url": "https://jobicy.com/jobs/?s={keywords}",
+            "card_selectors": ["article.job-post", ".job-post", "li[class*='job']", "a[href*='/jobs/']", "h2 a[href]"],
+            "apply_btn_selectors": [
+                "a.apply-btn",
+                "a:has-text('Apply')",
+                "a[href*='apply']",
+                "a:has-text('Apply now')",
+            ],
+            "next_page_selector": "a.next",
+        },
+    ]
+
+    def run_direct_external_campaign(self) -> dict[str, Any]:
+        """Browse external job boards directly â€” no LinkedIn.
+        Uses WeWorkRemotely, RemoteOK, and other bot-friendly remote job sites.
+        """
+        start = datetime.now(timezone.utc).isoformat()
+        stats: dict[str, int] = {"scanned": 0, "submitted": 0, "skipped": 0, "failures": 0, "errors": 0}
+
+        run_headless = self.config.settings.headless
+        visible_args = [] if run_headless else [
+            "--start-maximized", "--window-position=0,0",
+            "--disable-blink-features=AutomationControlled",
+        ]
+        launch_kw: dict = {
+            "headless": run_headless,
+            "args": visible_args + [
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-infobars",
+            ],
+        }
+        if not run_headless:
+            launch_kw["slow_mo"] = 80
+
+        with sync_playwright() as pw:
+            browser = None
+            for channel in ["chrome", "msedge"]:
+                try:
+                    browser = pw.chromium.launch(channel=channel, **launch_kw)
+                    break
+                except Exception:
+                    continue
+            if browser is None:
+                browser = pw.chromium.launch(**launch_kw)
+            self._active_browser = browser
+
+            context = browser.new_context(
+                viewport={"width": 1366, "height": 768},
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                locale="en-US",
+                timezone_id="Europe/Budapest",
+            )
+            self._active_context = context
+
+            # Open the first job site immediately so the user sees a real page right away
+            if not run_headless:
+                first_url = (
+                    self._DIRECT_EXTERNAL_SITES[0]["search_url"]
+                    .replace("{keywords}", quote_plus((self.config.settings.keywords or ["Software Developer"])[0]))
+                    .replace("{kw_slug}", (self.config.settings.keywords or ["Software Developer"])[0].lower().replace(" ", "-"))
+                )
+                splash = context.new_page()
+                self._setup_page_as_human(splash)
+                try:
+                    splash.goto(first_url, wait_until="domcontentloaded", timeout=15000)
+                    splash.bring_to_front()
+                    self._human_reading_pause(0.5, 1.0)
+                except Exception:
+                    pass
+                splash.close()
+
+            try:
+                for site in self._DIRECT_EXTERNAL_SITES:
+                    if self.stop_requested:
+                        break
+                    try:
+                       if site.get("name") == "RemoteOK":
+                           self._direct_external_search_remoteok_api(context, site, stats)
+                       else:
+                           self._direct_external_search_site(context, site, stats)
+                    except Exception as exc:
+                        self._log(f"[DIRECT-EXT] Site {site['name']} error: {exc}")
+                        stats["errors"] += 1
+            finally:
+                try:
+                    context.close()
+                except Exception:
+                    pass
+                try:
+                    browser.close()
+                except Exception:
+                    pass
+                self._active_context = None
+                self._active_browser = None
+
+        return {
+            "started_at": start,
+            "ended_at": datetime.now(timezone.utc).isoformat(),
+            "stats": stats,
+            "job_events": self._job_events,
+        }
+
+    def _direct_external_search_site(self, context, site: dict, stats: dict) -> None:
+        """Search one external job board and attempt to apply to found jobs."""
+        p = self.config.profile
+        s = self.config.settings
+
+        profile_title = (getattr(p, "current_job_title", "") or "").strip()
+        keywords = profile_title or "Software Engineer"
+        location = getattr(s, "locations", [None])[0] or "Remote"
+        kw_slug = keywords.lower().replace(" ", "-")
+
+        search_url = (
+            site["search_url"]
+            .replace("{keywords}", quote_plus(keywords))
+            .replace("{location}", quote_plus(location))
+            .replace("{kw_slug}", kw_slug)
+        )
+
+        page = context.new_page()
+        self._setup_page_as_human(page)
+        try:
+            self._log(f"[DIRECT-EXT] Opening {site['name']}: {search_url}")
+            try:
+                page.goto(search_url, wait_until="domcontentloaded", timeout=20000)
+                # Wait for JS to render job listings
+                try:
+                    page.wait_for_load_state("networkidle", timeout=10000)
+                except Exception:
+                    pass
+                page.bring_to_front()
+            except Exception as nav_exc:
+                self._log(f"[DIRECT-EXT] {site['name']} navigation failed: {nav_exc}")
+                stats["errors"] += 1
+                return
+
+            # Check for CAPTCHA or bot-detection wall immediately
+            page_issue = self._detect_external_page_error(page, search_url)
+            if page_issue:
+                self._log(f"[DIRECT-EXT] {site['name']} error page: {page_issue}")
+                stats["errors"] += 1
+                return
+
+            wall = self._detect_external_account_wall(page)
+            if wall:
+                self._log(f"[DIRECT-EXT] {site['name']} requires login: {wall}")
+                stats["skipped"] += 1
+                return
+
+            self._human_reading_pause(1.0, 2.0)
+
+            page_num = 0
+            max_pages = 2
+            applied_this_site = 0
+
+            while page_num < max_pages and not self.stop_requested:
+                page_num += 1
+
+                # Scroll through the results page naturally
+                self._direct_external_scroll_results(page)
+
+                # Collect all visible job card links
+                job_links = self._direct_external_collect_jobs(page, site)
+                if not job_links and page_num == 1:
+                    # Some boards ignore URL params; try in-page search
+                    self._direct_external_try_inpage_search(page, keywords, location)
+                    self._direct_external_scroll_results(page)
+                    job_links = self._direct_external_collect_jobs(page, site)
+                self._log(f"[DIRECT-EXT] {site['name']} page {page_num}: found {len(job_links)} jobs")
+
+                for job_url in job_links:
+                    if self.stop_requested:
+                        break
+                    if applied_this_site >= (self.limit or 10):
+                        break
+                    stats["scanned"] += 1
+                    try:
+                        ok = self._direct_external_apply_one(context, job_url, site, stats)
+                        if ok:
+                            applied_this_site += 1
+                    except Exception as exc:
+                        import traceback
+                        self._log(f"[DIRECT-EXT] Apply error {job_url[:60]}: {exc}")
+                        self._log(traceback.format_exc()[-1200:])
+                        stats["failures"] += 1
+
+                # Try to go to next page
+                if not site.get("next_page_selector"):
+                    break
+                try:
+                    next_btn = page.locator(site["next_page_selector"]).first
+                    if not next_btn.is_visible(timeout=2000):
+                        break
+                    next_btn.click(timeout=3000)
+                    self._human_reading_pause(1.5, 2.5)
+                except Exception:
+                    break
+        finally:
+            page.close()
+
+    def _direct_external_search_remoteok_api(self, context, site: dict, stats: dict) -> None:
+        """Use RemoteOK API to get direct apply/company URLs and skip dead aiok.co redirects."""
+        p = self.config.profile
+        profile_title = (getattr(p, "current_job_title", "") or "").strip().lower()
+        keywords = [w for w in profile_title.split() if len(w) > 2] or ["software", "engineer"]
+
+        page = context.new_page()
+        self._setup_page_as_human(page)
+        try:
+            api_url = "https://remoteok.com/api"
+            self._log(f"[DIRECT-EXT] Opening RemoteOK API: {api_url}")
+            try:
+                page.goto(api_url, wait_until="domcontentloaded", timeout=20000)
+                body = page.locator("body").inner_text(timeout=6000)
+                data = json.loads(body)
+            except Exception as exc:
+                self._log(f"[DIRECT-EXT] RemoteOK API failed: {exc}")
+                stats["errors"] += 1
+                return
+
+            jobs = []
+            for item in data if isinstance(data, list) else []:
+                if not isinstance(item, dict):
+                    continue
+                position = (item.get("position") or "").lower()
+                tags = " ".join(item.get("tags") or []).lower()
+                hay = f"{position} {tags}"
+                if keywords and not any(k in hay for k in keywords):
+                    continue
+                apply_url = (item.get("apply_url") or item.get("url") or "").strip()
+                if not apply_url:
+                    continue
+                low = apply_url.lower()
+                if "aiok.co" in low:
+                    continue
+                jobs.append(apply_url)
+                if len(jobs) >= 20:
+                    break
+
+            self._log(f"[DIRECT-EXT] RemoteOK API: found {len(jobs)} direct apply URLs")
+
+            applied_this_site = 0
+            for job_url in jobs:
+                if self.stop_requested:
+                    break
+                if applied_this_site >= (self.limit or 10):
+                    break
+                stats["scanned"] += 1
+                try:
+                    ok = self._direct_external_apply_one(context, job_url, site, stats)
+                    if ok:
+                        applied_this_site += 1
+                except Exception as exc:
+                    import traceback
+                    self._log(f"[DIRECT-EXT] Apply error {job_url[:60]}: {exc}")
+                    self._log(traceback.format_exc()[-1200:])
+                    stats["failures"] += 1
+        finally:
+            page.close()
+
+    def _direct_external_try_inpage_search(self, page, keywords: str, location: str) -> None:
+        """Best-effort in-page search for sites that ignore query params and open a generic page."""
+        search_selectors = [
+            "input[type='search']",
+            "input[name*='search' i]",
+            "input[id*='search' i]",
+            "input[placeholder*='search' i]",
+            "input[placeholder*='job' i]",
+        ]
+        try:
+            for sel in search_selectors:
+                try:
+                    inp = page.locator(sel).first
+                    if inp.is_visible(timeout=1200):
+                        self._human_move_mouse_to(page, inp)
+                        self._human_pause(0.1, 0.25)
+                        inp.click(timeout=2000)
+                        self._human_pause(0.1, 0.2)
+                        query = f"{keywords} {location}".strip()
+                        for ch in query:
+                            inp.type(ch, delay=random.randint(40, 120))
+                        self._human_pause(0.15, 0.35)
+                        inp.press("Enter")
+                        try:
+                            page.wait_for_load_state("domcontentloaded", timeout=12000)
+                        except Exception:
+                            pass
+                        self._human_reading_pause(0.8, 1.5)
+                        self._log(f"[DIRECT-EXT] In-page search executed: {query}")
+                        return
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    def _direct_external_scroll_results(self, page) -> None:
+        """Scroll down the results page naturally to load all job cards."""
+        try:
+            for _ in range(random.randint(3, 6)):
+                page.mouse.wheel(0, random.randint(300, 600))
+                time.sleep(random.uniform(0.3, 0.8))
+            # Scroll back up a little, like a human re-checking
+            page.mouse.wheel(0, -random.randint(100, 300))
+            self._human_pause(0.3, 0.7)
+        except Exception:
+            pass
+
+    def _direct_external_collect_jobs(self, page, site: dict) -> list[str]:
+        """Return a de-duplicated list of job detail/apply URLs from the search page."""
+        urls: list[str] = []
+        seen: set[str] = set()
+
+        def _is_probable_job_url(href: str) -> bool:
+            low = (href or "").lower()
+            if not low or low.startswith("javascript") or low.startswith("mailto:"):
+                return False
+            if site.get("name") == "WeWorkRemotely":
+                return "/remote-jobs/" in low and "/company/" not in low and "/listing_ads/" not in low
+            # RemoteOK frequently exposes company pages; keep only real job paths.
+            if site.get("name") == "RemoteOK":
+                return "/remote-jobs/" in low
+            if site.get("name") == "Jobicy":
+                # Keep only actual job detail URLs like /jobs/12345-slug (has digit after /jobs/)
+                import re as _re
+                return bool(_re.search(r"/jobs/\d", low))
+            blocked = (
+                "/company", "/companies", "/blog", "/about", "/privacy", "/terms",
+                "linkedin.com", "twitter.com", "facebook.com", "instagram.com"
+            )
+            return not any(b in low for b in blocked)
+
+        for selector in site["card_selectors"]:
+            try:
+                cards = page.query_selector_all(selector)
+                for card in cards:
+                    try:
+                        hrefs: list[str] = []
+
+                        # RemoteOK: prefer explicit job anchors first.
+                        if site.get("name") == "RemoteOK":
+                            try:
+                                links = card.query_selector_all("a[href*='/remote-jobs/']")
+                                for lk in links:
+                                    hrefs.append(lk.get_attribute("href") or "")
+                            except Exception:
+                                pass
+
+                        # Generic fallback: first anchor or card href.
+                        if not hrefs:
+                            link = card.query_selector("a[href]")
+                            if link:
+                                hrefs.append(link.get_attribute("href") or "")
+                            else:
+                                own_href = card.get_attribute("href") or ""
+                                if own_href:
+                                    hrefs.append(own_href)
+
+                        for href in hrefs:
+                            href = (href or "").strip()
+                            if not href or not _is_probable_job_url(href):
+                                continue
+                            if href.startswith("/"):
+                                base = page.url.split("/")[0] + "//" + page.url.split("/")[2]
+                                href = base + href
+                            if href in seen:
+                                continue
+                            seen.add(href)
+                            urls.append(href)
+                    except Exception:
+                        continue
+                if urls:
+                    break
+            except Exception:
+                continue
+
+        # WeWorkRemotely fallback: job links are often directly in anchors, not always in card wrappers.
+        if not urls and site.get("name") == "WeWorkRemotely":
+            try:
+                links = page.query_selector_all("a[href*='/remote-jobs/']")
+                for lk in links:
+                    href = (lk.get_attribute("href") or "").strip()
+                    if not href:
+                        continue
+                    if href.startswith("/"):
+                        href = f"https://weworkremotely.com{href}"
+                    low = href.lower()
+                    if "/company/" in low or "/listing_ads/" in low:
+                        continue
+                    if href not in seen:
+                        seen.add(href)
+                        urls.append(href)
+            except Exception:
+                pass
+        return urls[:20]  # cap per page
+
+    def _find_best_apply_link(self, page, site: dict) -> tuple[Any | None, str]:
+        """Find apply action using site selectors first, then robust generic fallbacks."""
+        broken_domains = ("aiok.co", "remoteok.com/l/")
+
+        def _is_broken_href(href: str) -> bool:
+            low = (href or "").lower()
+            if not low.startswith("http"):
+                return False
+            try:
+                host = low.split("/")[2]
+            except Exception:
+                return False
+            for d in broken_domains:
+                if "/" in d:
+                    if d in low:
+                        return True
+                else:
+                    if host == d or host.endswith(f".{d}"):
+                        return True
+            return False
+
+        # 1) Site-specific selectors
+        for sel in site.get("apply_btn_selectors", []):
+            try:
+                btn = page.locator(sel).first
+                if btn.is_visible(timeout=1200):
+                    href = (btn.get_attribute("href") or "").strip()
+                    if _is_broken_href(href):
+                        continue
+                    return btn, href
+            except Exception:
+                continue
+
+        # 2) Generic apply-like controls
+        generic_selectors = [
+            "a:has-text('Apply now')",
+            "a:has-text('Apply for this job')",
+            "a:has-text('Apply for this position')",
+            "a:has-text('Apply')",
+            "button:has-text('Apply now')",
+            "button:has-text('Apply')",
+            "a[href*='apply']",
+            "a[href*='careers']",
+            "a[href*='jobs']",
+        ]
+        for sel in generic_selectors:
+            try:
+                btn = page.locator(sel).first
+                if btn.is_visible(timeout=900):
+                    href = (btn.get_attribute("href") or "").strip()
+                    if _is_broken_href(href):
+                        continue
+                    return btn, href
+            except Exception:
+                continue
+
+        # 3) RemoteOK and similar boards: pick likely external outbound link.
+        try:
+            anchors = page.query_selector_all("a[href]")
+        except Exception:
+            anchors = []
+
+        blocked_domains = (
+            "remoteok.com", "weworkremotely.com", "jobicy.com", "europeremotejobs.com",
+            "linkedin.com", "twitter.com", "x.com", "facebook.com", "instagram.com", "t.me"
+        )
+        for a in anchors[:150]:
+            try:
+                href = (a.get_attribute("href") or "").strip()
+                txt = (a.inner_text() or "").strip().lower()
+                if not href:
+                    continue
+                if href.startswith("/"):
+                    continue
+                hlow = href.lower()
+                if not hlow.startswith("http"):
+                    continue
+                if any(d in hlow for d in blocked_domains):
+                    continue
+                if _is_broken_href(href):
+                    continue
+                # Prefer links with apply-related text first
+                if any(k in txt for k in ("apply", "job", "position", "career", "open role")):
+                    return None, href
+
+                    # 4) Last resort: any external link (not internal navigation) on the page
+                    for a in anchors[:150]:
+                        try:
+                            href = (a.get_attribute("href") or "").strip()
+                            if not href or href.startswith("/"):
+                                continue
+                            hlow = href.lower()
+                            if not hlow.startswith("http"):
+                                continue
+                            if any(d in hlow for d in blocked_domains):
+                                continue
+                            if _is_broken_href(href):
+                                continue
+                            return None, href
+                        except Exception:
+                            continue
+            except Exception:
+                continue
+
+        return None, ""
+
+    def _open_external_apply_target(self, context, page, apply_btn, btn_href: str, site: dict):
+        """Open apply destination from button/href and return a target page when it becomes external.
+
+        Returns:
+            tuple[target_page_or_none, note]
+        """
+        target_page = None
+        note = ""
+
+        # Normalize relative href.
+        normalized_href = (btn_href or "").strip()
+        if normalized_href.startswith("/"):
+            parts = page.url.split("/")
+            if len(parts) >= 3:
+                normalized_href = f"{parts[0]}//{parts[2]}{normalized_href}"
+
+        current_host = ""
+        try:
+            current_host = page.url.split("/")[2].lower()
+        except Exception:
+            current_host = ""
+
+        def _is_broken_host(href: str) -> bool:
+            low = (href or "").lower()
+            if not low.startswith("http"):
+                return False
+            try:
+                host = low.split("/")[2]
+            except Exception:
+                return False
+            return host == "aiok.co" or host.endswith(".aiok.co")
+
+        def _is_externalish(href: str) -> bool:
+            low = (href or "").lower()
+            if not low:
+                return False
+            if "/l/" in low or "apply" in low:
+                return True
+            if low.startswith("http"):
+                try:
+                    host = low.split("/")[2]
+                    return host != current_host
+                except Exception:
+                    return True
+            return False
+
+        # Avoid known dead redirect domains.
+        if normalized_href and _is_broken_host(normalized_href):
+            note = f"skipped broken redirect domain: {normalized_href[:80]}"
+            normalized_href = ""
+
+        # Prefer direct navigation when href likely points to outbound/apply route.
+        if normalized_href and _is_externalish(normalized_href):
+            try:
+                target_page = context.new_page()
+                self._setup_page_as_human(target_page)
+                target_page.goto(normalized_href, wait_until="domcontentloaded", timeout=18000)
+                self._human_reading_pause(0.8, 1.6)
+                # Check if redirect landed on a dead domain
+                final_url = target_page.url
+                if _is_broken_host(final_url):
+                    try:
+                        target_page.close()
+                    except Exception:
+                        pass
+                    note = f"redirect ended at dead domain: {final_url[:80]}"
+                else:
+                    return target_page, "opened apply href"
+            except Exception as exc:
+                note = f"open href failed: {exc}"
+
+        # Try click path (popup or same-tab navigation).
+        if apply_btn is not None:
+            before_url = page.url
+            try:
+                with page.expect_popup(timeout=3500) as popup_info:
+                    self._human_move_mouse_to(page, apply_btn)
+                    self._human_pause(0.1, 0.25)
+                    apply_btn.click(timeout=3500)
+                target_page = popup_info.value
+                self._setup_page_as_human(target_page)
+                target_page.wait_for_load_state("domcontentloaded", timeout=15000)
+                self._human_reading_pause(0.8, 1.6)
+                return target_page, "opened popup from apply click"
+            except Exception:
+                try:
+                    self._human_move_mouse_to(page, apply_btn)
+                    self._human_pause(0.1, 0.2)
+                    apply_btn.click(timeout=3000)
+                except Exception:
+                    pass
+
+            try:
+                page.wait_for_load_state("domcontentloaded", timeout=9000)
+            except Exception:
+                pass
+
+            after_url = page.url
+            if after_url != before_url:
+                try:
+                    after_host = after_url.split("/")[2].lower()
+                except Exception:
+                    after_host = ""
+                if after_host and after_host != current_host:
+                    return page, "navigated to external host after apply click"
+                if _is_externalish(after_url):
+                    return page, "navigated to external apply route after click"
+
+        return None, note or "no external destination opened"
+
+    def _direct_external_apply_one(self, context, job_url: str, site: dict, stats: dict) -> bool:
+        """Open one job page and attempt to apply. Returns True if submitted."""
+        page = context.new_page()
+        self._setup_page_as_human(page)
+        try:
+            page.goto(job_url, wait_until="domcontentloaded", timeout=18000)
+            # Wait for JS to render apply button
+            try:
+                page.wait_for_load_state("networkidle", timeout=10000)
+            except Exception:
+                pass
+            self._human_reading_pause(1.2, 2.8)
+
+            # Check for page errors
+            page_issue = self._detect_external_page_error(page, job_url)
+            if page_issue:
+                self._log(f"[DIRECT-EXT] Skipping â€” {page_issue}")
+                stats["skipped"] += 1
+                return False
+
+            # Check for account walls
+            wall = self._detect_external_account_wall(page)
+            if wall:
+                self._log(f"[DIRECT-EXT] Account wall on {job_url[:60]}: {wall}")
+                login_ok, login_note = self._try_external_login(page)
+                if login_ok:
+                    self._log(f"[DIRECT-EXT] {login_note}")
+                    self._human_reading_pause(0.6, 1.2)
+                else:
+                    self._log(f"[DIRECT-EXT] {login_note}")
+                    stats["skipped"] += 1
+                    return False
+
+            # Extract basic job info for logging
+            title = ""
+            company = ""
+            try:
+                title = (page.locator("h1").first.inner_text(timeout=2000) or "").strip()[:80]
+            except Exception:
+                pass
+            try:
+                company = (page.locator("[class*='company']").first.inner_text(timeout=1500) or "").strip()[:50]
+            except Exception:
+                pass
+            self._log(f"[DIRECT-EXT] Applying: {title} @ {company} | {job_url[:60]}")
+
+            apply_btn, btn_href = self._find_best_apply_link(page, site)
+
+            if not apply_btn and not btn_href:
+                self._log(f"[DIRECT-EXT] No apply button found on {job_url[:60]}")
+                stats["skipped"] += 1
+                return False
+
+            ext_page, ext_note = self._open_external_apply_target(context, page, apply_btn, btn_href, site)
+
+            if ext_page is not None:
+                # Opens an ATS site â€” use existing ATS fill helpers
+                self._current_report = {"qa_pairs": {}, "uploaded_files": [], "external_ats": {}}
+                self._log(f"[DIRECT-EXT] Apply route opened: {ext_note}")
+
+                err = self._detect_external_page_error(ext_page, ext_page.url)
+                if err:
+                    self._log(f"[DIRECT-EXT] {err}")
+                    stats["skipped"] += 1
+                    return False
+
+                wall2 = self._detect_external_account_wall(ext_page)
+                if wall2:
+                    self._log(f"[DIRECT-EXT] {wall2}")
+                    login_ok, login_note = self._try_external_login(ext_page)
+                    if login_ok:
+                        self._log(f"[DIRECT-EXT] {login_note}")
+                        self._human_reading_pause(0.6, 1.2)
+                    else:
+                        self._log(f"[DIRECT-EXT] {login_note}")
+                        stats["skipped"] += 1
+                        return False
+
+                ats = self._detect_ats(ext_page.url)
+                self._log(f"[DIRECT-EXT] ATS: {ats} | {ext_page.url[:70]}")
+                try:
+                    ok, note = self._fill_generic_external(ext_page)
+                except Exception as fill_exc:
+                    ok, note = False, f"ATS fill exception: {fill_exc}"
+                if ok:
+                    stats["submitted"] += 1
+                    self._log(f"[DIRECT-EXT] âœ“ Submitted via {ats}: {note}")
+                    return True
+                else:
+                    self._log(f"[DIRECT-EXT] âœ— Could not submit: {note}")
+                    stats["failures"] += 1
+                    return False
+            else:
+                # Inline form on the same page â€” click button and fill
+                self._current_report = {"qa_pairs": {}, "uploaded_files": [], "external_ats": {}}
+                if apply_btn is not None:
+                    self._human_move_mouse_to(page, apply_btn)
+                    self._human_pause(0.1, 0.25)
+                    apply_btn.click(timeout=3000)
+                self._human_reading_pause(0.8, 1.8)
+
+                wall3 = self._detect_external_account_wall(page)
+                if wall3:
+                    self._log(f"[DIRECT-EXT] {wall3}")
+                    login_ok, login_note = self._try_external_login(page)
+                    if login_ok:
+                        self._log(f"[DIRECT-EXT] {login_note}")
+                        self._human_reading_pause(0.5, 1.0)
+                    else:
+                        self._log(f"[DIRECT-EXT] {login_note}")
+                        stats["skipped"] += 1
+                        return False
+
+                try:
+                    ok, note = self._fill_generic_external(page)
+                except Exception as fill_exc:
+                    ok, note = False, f"Inline fill exception: {fill_exc}"
+                if ok:
+                    stats["submitted"] += 1
+                    self._log(f"[DIRECT-EXT] âœ“ Submitted inline: {note}")
+                    return True
+                else:
+                    self._log(f"[DIRECT-EXT] âœ— Inline fill failed: {note}")
+                    stats["failures"] += 1
+                    return False
+        finally:
+            try:
+                page.close()
+            except Exception:
+                pass
+
+    def run_networking_campaign(self) -> dict[str, Any]:
+        """Follow role-matched companies on LinkedIn.
+
+        Returns a dict with stats: sent, skipped, failures.
+        Uses the same Playwright session as the apply bot (reuses saved login state).
+        """
+        start = datetime.now(timezone.utc).isoformat()
+        net_stats: dict[str, int] = {"sent": 0, "skipped": 0, "failures": 0}
+
+        run_headless = self.config.settings.headless
+        if not self.config.paths.browser_state_path.exists():
+            run_headless = False
+
+        with sync_playwright() as p:
+            browser = None
+            for channel in ["chrome", "msedge"]:
+                try:
+                    browser = p.chromium.launch(headless=run_headless, channel=channel)
+                    break
+                except Exception:
+                    continue
+            if browser is None:
+                browser = p.chromium.launch(headless=run_headless)
+
+            context = browser.new_context(
+                storage_state=str(self.config.paths.browser_state_path)
+                if self.config.paths.browser_state_path.exists()
+                else None
+            )
+            page = context.new_page()
+            try:
+                self._login(page)
+                self._do_networking(page, net_stats)
+            finally:
+                context.storage_state(path=str(self.config.paths.browser_state_path))
+                context.close()
+                browser.close()
+
+        return {
+            "started_at": start,
+            "ended_at": datetime.now(timezone.utc).isoformat(),
+            "stats": net_stats,
+        }
+
+    def run_unfollow_companies_campaign(
+        self,
+        *,
+        companies: list[str] | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """Unfollow previously tracked companies from network_sent.json."""
+        start = datetime.now(timezone.utc).isoformat()
+        stats: dict[str, int] = {"unfollowed": 0, "skipped": 0, "failures": 0}
+
+        run_headless = self.config.settings.headless
+        if not self.config.paths.browser_state_path.exists():
+            run_headless = False
+
+        with sync_playwright() as p:
+            browser = None
+            for channel in ["chrome", "msedge"]:
+                try:
+                    browser = p.chromium.launch(headless=run_headless, channel=channel)
+                    break
+                except Exception:
+                    continue
+            if browser is None:
+                browser = p.chromium.launch(headless=run_headless)
+
+            context = browser.new_context(
+                storage_state=str(self.config.paths.browser_state_path)
+                if self.config.paths.browser_state_path.exists()
+                else None
+            )
+            page = context.new_page()
+            try:
+                self._login(page)
+                self._do_unfollow_companies(page, stats, companies=companies, limit=limit)
+            finally:
+                context.storage_state(path=str(self.config.paths.browser_state_path))
+                context.close()
+                browser.close()
+
+        return {
+            "started_at": start,
+            "ended_at": datetime.now(timezone.utc).isoformat(),
+            "stats": stats,
+        }
+
+    def _do_networking(self, page, stats: dict[str, int]) -> None:
+        """Follow top international companies on LinkedIn to grow connections."""
+        network_log_path = self.config.paths.base_dir / "network_sent.json"
+        sent: dict[str, Any] = self._read_json(network_log_path, default={})
+        target_companies = self._get_networking_target_companies()
+
+        max_per_run: int = getattr(self.config.settings, "max_network_per_run", 20)
+        count = 0
+
+        print(
+            f"[NETWORK] Title='{getattr(self.config.profile, 'current_job_title', '')}' "
+            f"-> {len(target_companies)} role-matched companies"
+        )
+
+        for company in target_companies:
+            if count >= max_per_run:
+                break
+
+            # â”€â”€ Follow the company page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            follow_key = f"__follow__{company.lower()}"
+            if follow_key not in sent:
+                try:
+                    company_search_url = (
+                        "https://www.linkedin.com/search/results/companies/"
+                        f"?keywords={quote_plus(company)}"
+                    )
+                    page.goto(company_search_url, wait_until="domcontentloaded", timeout=60_000)
+                    self._human_pause()
+                    # Click the first company result
+                    first_link = page.query_selector(
+                        "a[href*='/company/'], "
+                        ".entity-result__title-text a, "
+                        "div[data-view-name='search-entity-result-universal-template'] a[href*='/company/']"
+                    )
+                    if first_link:
+                        company_href = first_link.get_attribute("href") or ""
+                        if company_href.startswith("/"):
+                            company_href = "https://www.linkedin.com" + company_href
+                        company_href = company_href.split("?")[0]
+                        page.goto(company_href, wait_until="domcontentloaded", timeout=60_000)
+                        self._human_pause()
+                        # Find the Follow button on the company page
+                        follow_btn = None
+                        for sel in [
+                            "button[aria-label*='Follow'][aria-label*='" + company + "']",
+                            "button[aria-label='Follow']",
+                            "button:has-text('Follow')",
+                        ]:
+                            try:
+                                b = page.query_selector(sel)
+                                if b:
+                                    follow_btn = b
+                                    break
+                            except Exception:
+                                pass
+                        if follow_btn:
+                            follow_btn.click(timeout=3000)
+                            self._human_pause(0.5, 1.0)
+                            sent[follow_key] = {
+                                "company": company,
+                                "company_url": company_href,
+                                "followed_at": datetime.now(timezone.utc).isoformat(),
+                            }
+                            self._write_json(network_log_path, sent)
+                            stats["sent"] += 1
+                            count += 1
+                except Exception:
+                    pass
+
+    def _do_unfollow_companies(
+        self,
+        page,
+        stats: dict[str, int],
+        *,
+        companies: list[str] | None,
+        limit: int,
+    ) -> None:
+        """Unfollow tracked companies and update network_sent.json accordingly."""
+        network_log_path = self.config.paths.base_dir / "network_sent.json"
+        sent: dict[str, Any] = self._read_json(network_log_path, default={})
+
+        targets: list[tuple[str, dict[str, Any]]] = []
+        requested_names = [c.strip() for c in (companies or []) if c and c.strip()]
+        normalized_filter = {c.lower() for c in requested_names}
+        for key, payload in sent.items():
+            if not key.startswith("__follow__") or not isinstance(payload, dict):
+                continue
+            company_name = str(payload.get("company", "")).strip()
+            if not company_name:
+                continue
+            if normalized_filter:
+                company_name_l = company_name.lower()
+                matches = any(
+                    company_name_l == needle
+                    or needle in company_name_l
+                    or company_name_l in needle
+                    for needle in normalized_filter
+                )
+                if not matches:
+                    continue
+            targets.append((key, payload))
+
+        # If the requested company is not in tracking log, still try direct unfollow.
+        if not targets and requested_names:
+            for requested in requested_names:
+                targets.append((f"__adhoc__{requested.lower()}", {"company": requested, "company_url": ""}))
+
+        for idx, (follow_key, payload) in enumerate(targets):
+            if idx >= limit:
+                break
+
+            company = str(payload.get("company", "")).strip()
+            company_url = str(payload.get("company_url", "")).strip()
+            if not company:
+                stats["skipped"] += 1
+                continue
+
+            try:
+                if company_url:
+                    page.goto(company_url, wait_until="domcontentloaded", timeout=60_000)
+                else:
+                    search_url = (
+                        "https://www.linkedin.com/search/results/companies/"
+                        f"?keywords={quote_plus(company)}"
+                    )
+                    page.goto(search_url, wait_until="domcontentloaded", timeout=60_000)
+                    self._human_pause(0.5, 1.0)
+                    first_link = page.query_selector(
+                        "a[href*='/company/'], "
+                        ".entity-result__title-text a, "
+                        "div[data-view-name='search-entity-result-universal-template'] a[href*='/company/']"
+                    )
+                    if not first_link:
+                        stats["skipped"] += 1
+                        continue
+                    href = first_link.get_attribute("href") or ""
+                    if href.startswith("/"):
+                        href = "https://www.linkedin.com" + href
+                    company_url = href.split("?")[0]
+                    page.goto(company_url, wait_until="domcontentloaded", timeout=60_000)
+
+                self._human_pause(0.5, 1.0)
+
+                clicked = False
+                for sel in [
+                    "button:has-text('Following')",
+                    "button[aria-label*='Following']",
+                    "button[aria-label*='following']",
+                    "button[aria-pressed='true'][aria-label*='Follow']",
+                    "button[aria-pressed='true'][aria-label*='follow']",
+                    "button[aria-label*='Unfollow']",
+                    "button:has-text('Unfollow')",
+                ]:
+                    btn = page.query_selector(sel)
+                    if btn:
+                        try:
+                            btn.click(timeout=3000)
+                            clicked = True
+                            break
+                        except Exception:
+                            pass
+
+                if not clicked:
+                    # Some company pages expose Unfollow via overflow menu.
+                    try:
+                        more_btn = page.query_selector(
+                            "button[aria-label='More actions'], "
+                            "button[aria-label*='More actions'], "
+                            "button[aria-label*='more actions']"
+                        )
+                        if more_btn:
+                            more_btn.click(timeout=3000)
+                            self._human_pause(0.3, 0.6)
+                            menu_unfollow = page.query_selector(
+                                "div[role='menuitem']:has-text('Unfollow'), "
+                                "span:has-text('Unfollow')"
+                            )
+                            if menu_unfollow:
+                                menu_unfollow.click(timeout=3000)
+                                clicked = True
+                    except Exception:
+                        pass
+
+                if not clicked:
+                    stats["skipped"] += 1
+                    continue
+
+                self._human_pause(0.4, 0.8)
+                confirm_btn = page.query_selector(
+                    "button:has-text('Unfollow'), "
+                    "button[aria-label*='Unfollow']"
+                )
+                if confirm_btn:
+                    try:
+                        confirm_btn.click(timeout=3000)
+                    except Exception:
+                        pass
+
+                stats["unfollowed"] += 1
+                if follow_key.startswith("__follow__"):
+                    sent.pop(follow_key, None)
+                self._write_json(network_log_path, sent)
+                self._human_pause(0.5, 1.0)
+            except Exception:
+                stats["failures"] += 1
+
+
+    def _send_connection_request_on_card(self, page, card) -> bool | None:
+        """Click Connect on a search-result card and confirm the modal.
+
+        Returns:
+            True  â€” invitation sent successfully
+            False â€” an error occurred
+            None  â€” not applicable (already connected, button absent, etc.)
+        """
+        try:
+            # 1. Find the Connect button directly on the card
+            connect_btn = None
+            for sel in [
+                "button[aria-label*='Invite'][aria-label*='connect']",
+                "button[aria-label*='Connect']",
+                "button[aria-label*='connect']",
+            ]:
+                try:
+                    connect_btn = card.query_selector(sel)
+                    if connect_btn:
+                        break
+                except Exception:
+                    pass
+
+            if not connect_btn:
+                # Scan all buttons for text "Connect"
+                for btn in (card.query_selector_all("button") or []):
+                    try:
+                        if (btn.inner_text() or "").strip().lower() == "connect":
+                            connect_btn = btn
+                            break
+                    except Exception:
+                        pass
+
+            if not connect_btn:
+                # Try "..." overflow menu
+                more_btn = None
+                for sel in [
+                    "button[aria-label='More actions']",
+                    "button[aria-label*='more actions']",
+                    "button[aria-label*='More']",
+                ]:
+                    try:
+                        more_btn = card.query_selector(sel)
+                        if more_btn:
+                            break
+                    except Exception:
+                        pass
+
+                if not more_btn:
+                    return None  # No way to connect from this card
+
+                more_btn.click(timeout=3000)
+                page.wait_for_timeout(700)
+                for sel in [
+                    "div[role='option']:has-text('Connect')",
+                    "li[role='option']:has-text('Connect')",
+                    "span:has-text('Connect')",
+                ]:
+                    try:
+                        item = page.query_selector(sel)
+                        if item:
+                            item.click(timeout=3000)
+                            connect_btn = True  # sentinel â€” modal will follow
+                            break
+                    except Exception:
+                        pass
+
+                if not connect_btn:
+                    return None
+            else:
+                connect_btn.click(timeout=3000)
+
+            page.wait_for_timeout(1200)
+
+            # 2. Handle post-click modal
+            # "Send now" / "Send without a note"
+            for sel in [
+                "button[aria-label='Send now']",
+                "button[aria-label='Send without a note']",
+                "button:has-text('Send now')",
+                "button:has-text('Send without a note')",
+            ]:
+                try:
+                    btn = page.query_selector(sel)
+                    if btn:
+                        btn.click(timeout=3000)
+                        page.wait_for_timeout(800)
+                        return True
+                except Exception:
+                    pass
+
+            # "How do you know X?" â€” dismiss; we can't auto-categorize
+            for sel in [
+                "button[aria-label='Dismiss']",
+                "button[aria-label='Close']",
+                "button:has-text('Cancel')",
+            ]:
+                try:
+                    btn = page.query_selector(sel)
+                    if btn:
+                        btn.click(timeout=2000)
+                        return None
+                except Exception:
+                    pass
+
+            # No modal visible â€” request likely sent inline (no extra step required)
+            return True
+
+        except Exception:
+            return False
+
+    # â”€â”€ State helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    def _write_state(self) -> None:
+        self._write_json(self.config.paths.state_path, self.state)
+
+    def _reached_limit(self) -> bool:
+        # Count terminal outcomes so short test runs stop quickly.
+        # "skipped" = already seen / redirected â†’ also doesn't count.
+        processed = (
+            self.stats["submitted"]
+            + self.stats["dry_run"]
+            + self.stats["manual_required"]
+            + self.stats["failures"]
+        )
+        return processed >= self.limit
