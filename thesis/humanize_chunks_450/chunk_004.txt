@@ -1,0 +1,37 @@
+### 2.2 People Analytics and Organizational Risk Assessment
+
+People analytics research identifies several high-value predictive dimensions: turnover/retention patterns, leadership quality and succession readiness, workforce stability, and employee engagement. Fitz-Enz and Mattox demonstrate that analytics-driven HR decisions produce measurable improvements in retention, productivity, and organizational performance. [8][12]
+
+Organizational risk literature emphasizes that vulnerability concentrates in specific areas: key-person dependency, process fragility, financial leverage, and workforce churn. The Basel III framework and subsequent organizational risk models recognize that comprehensive risk assessment requires integration across finance, operations, and human capital dimensions. [1][15]
+
+However, most commercial analytics platforms either focus narrowly on HR metrics or operate in functional silos. Integrated risk assessment frameworks remain underdeveloped, particularly in contexts where methodological transparency is required. [3][4]
+
+### 2.3 Transparency and Explainability in Business Intelligence
+
+A growing body of research addresses the limitation of black-box machine learning in organizational decision contexts. Explainable AI (XAI) literature argues that high-stakes decisions—including those affecting people, capital allocation, and strategy—require interpretable models. [11][27]
+
+Davenport and Harris's foundational work on analytics-driven organizations emphasizes that organizations competing on analytics require investment not only in technology but in organizational capability for analytics interpretation and governance. [6]
+
+The tension between model complexity and interpretability is well-documented. While sophisticated machine learning often achieves higher predictive accuracy, rule-based and transparent models provide greater organizational trust, auditability, and regulatory alignment. Many organizations are adopting hybrid approaches: transparent rule-based models as the primary accountable path, with machine learning as a comparative check. [16][19]
+
+### 2.4 Research Gap and Thesis Positioning
+
+The research literature reveals three significant gaps:
+
+1. **Integration Gap:** Most HRIS platforms address HR analytics in isolation. Cross-functional integration of HR, finance, and operations analytics remains limited in accessible solutions.
+
+2. **Transparency Gap:** Commercial platforms often prioritize predictive accuracy over model interpretability. Organizations increasingly demand auditable, explainable analytical systems.
+
+3. **Accessibility Gap:** Enterprise analytics platforms are expensive and complex, limiting their availability to smaller organizations and custom implementation contexts.
+
+This thesis addresses these gaps through a transparent, integrated analytical framework combining rule-based KPI computation with local machine learning support. By prioritizing methodological traceability and role-specific visualization, the work demonstrates that professional, auditable decision support can be implemented within academic and organizational resource constraints. [5][10][17]
+
+---
+
+# 3. SYSTEM DESIGN AND ARCHITECTURE
+
+### 3.1 Architectural Overview and Layered Design
+
+The system employs a four-layer architecture emphasizing separation of concerns and modularity:
+
+**Layer 1 – Presentation Layer:** User interfaces provided through HTML templates rendered by Flask, CSS styling for responsive design, and vanilla JavaScript for client-side interactivity. This layer handles user authentication, form input collection, dashboard rendering, and PDF export initiation.

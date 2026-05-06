@@ -1,0 +1,55 @@
+**Layer 2 – Application Layer:** Flask-based web routing, session management, request validation, and orchestration of analytical workflows. This layer enforces authentication and authorization, routes requests to appropriate business logic, and constructs response context for template rendering.
+
+**Layer 3 – Analytics Layer:** Core computational engine implementing KPI normalization, rule-based scoring, weighted aggregation, and prediction interpretation. This layer contains deterministic algorithms and is decoupled from web concerns, enabling independent testing and validation.
+
+**Layer 4 – Persistence Layer:** SQLite database management including user account storage, analysis history archiving, and metadata curation. This layer ensures data consistency and enables longitudinal trend analysis.
+
+This layering improves maintainability, testability, and extensibility. The analytics layer can be validated independently of web routing; the persistence layer can evolve toward stronger databases (PostgreSQL) without affecting analytical logic.
+
+### 3.2 Data Model and Input Dimensions
+
+The system organizes inputs into three thematic domains:
+
+**Domain 1 – Leadership and People:**
+- Leadership Years: accumulated tenure in leadership roles
+- Digital Maturity Score: organizational digital capability (1-10 scale)
+- Retention Percentage: proportion of workforce remaining year-over-year
+- Churn Percentage: voluntary and involuntary separation rate
+
+**Domain 2 – Risk and Operations:**
+- Process Documentation Score: formalization of operational procedures
+- Key-Person Dependency Score: concentration of critical skills
+- Debt-to-Equity Ratio: financial leverage indicator
+- Process Fragility Score: operational risk from dispersed responsibilities
+
+**Domain 3 – Financial Performance:**
+- Profit Margin: EBIT or net profit as percentage of revenue
+- Growth Rate: year-over-year revenue growth percentage
+- Cash-on-Hand Months: operational runway based on burn rate
+- Employee Count: organizational scale
+
+All inputs are normalized to comparable 0-100 scales to enable weighted aggregation without domain-specific bias. Normalization rules employ piecewise linear transformations, thresholds, and diminishing-return functions where theoretically justified.
+
+### 3.3 KPI Design and Normalization Strategy
+
+The system computes four principal indicators:
+
+**Leadership Readiness Score (LRS)** [Formula 1]
+
+LRS = 0.40 × Normalized_Leadership_Years + 0.35 × Digital_Maturity + 0.25 × Retention_Percentage     (1)
+
+This metric reflects organizational capacity for strategic initiatives and change management. It combines experience-based depth (leadership tenure), capability for modern operational challenges (digital maturity), and team stability (retention).
+
+**Scaling Risk Score (SRS)** [Formula 2]
+
+SRS = 0.30 × Churn_Percentage + 0.25 × Key_Person_Dependency + 0.25 × Debt_Pressure + 0.20 × Process_Fragility     (2)
+
+This metric quantifies organizational vulnerability to growth pressures. Higher scores indicate greater scaling risk. Components reflect workforce instability, concentration risk, financial constraints, and operational maturity gaps.
+
+**Financial Stability Composite (FSC)** [Formula 3]
+
+FSC = 0.40 × Profit_Margin + 0.35 × Growth_Rate + 0.25 × Cash_Position     (3)
+
+This metric reflects financial resilience and runway. It balances profitability (sustainability), growth (market position), and liquidity (operational flexibility).
+
+**Organizational Health Index (OHI)** [Formula 4]

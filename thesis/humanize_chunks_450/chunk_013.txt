@@ -1,0 +1,57 @@
+**Key Findings:** (1) Transparent rule-based analytics can meet organizational standards without sacrificing operational usability or decision relevance; (2) Multi-domain organizational assessment is achievable through explicit normalization and weighted integration; (3) Modular system architecture supports evolution from academic prototype to production deployment.
+
+The thesis therefore contributes both theoretical insights into transparent organizational analytics and practical artifacts demonstrating that explainable decision-support systems can be implemented effectively within thesis scope and organizational resource constraints.
+
+---
+
+# LIST OF FIGURES
+
+1. Figure 1: Four-Layer System Architecture (Presentation, Application, Analytics, Persistence)
+
+2. Figure 2: Data Input Domains (Leadership and People, Risk and Operations, Financial Performance)
+
+3. Figure 3: KPI Aggregation Hierarchy (Component Inputs → Principal KPIs → Organizational Health Index)
+
+4. Figure 4: Role-Based Dashboard Mapping (CEO, HR, Finance, Operations perspectives)
+
+5. Figure 5: Authentication and Authorization Workflow
+
+6. Figure 6: Manual Analysis Processing Pipeline
+
+7. Figure 7: CSV Batch Ingestion and Ranking Algorithm
+
+8. Figure 8: PDF Report Generation from Snapshots
+
+9. Figure 9: Database Schema (Users and Analyses Tables)
+
+10. Figure 10: Machine Learning Model Training and Prediction Flow
+
+---
+
+# REFERENCES
+
+[1] Altman, E. I. Predicting Financial Distress and Bankruptcy. New York: Wiley, 1968.
+
+[2] Becker, B. E.; Huselid, M. A.; Ulrich, D. The HR Scorecard: Linking People, Strategy, and Performance. Boston: Harvard Business School Press, 2001.
+
+[3] Bondarouk, T.; Brewster, C. Conceptualising the future of HRM and technology research. The International Journal of Human Resource Management, 27(21), 2016, pp. 2652-2671.
+
+[4] Bondarouk, T.; Ruël, H. The strategic value of e-HRM: Results from an exploratory study in a governmental organization. The International Journal of Human Resource Management, 24(2), 2013, pp. 391-414.
+
+[5] Cascio, W. F.; Boudreau, J. W. Investing in People: Financial Impact of Human Resource Initiatives. 2nd ed. Upper Saddle River: FT Press, 2011.
+
+[6] Davenport, T. H.; Harris, J. G. Competing on Analytics: The New Science of Winning. Boston: Harvard Business School Press, 2007.
+
+[7] Drucker, P. F. Management: Tasks, Responsibilities, Practices. New York: Harper & Row, 1973.
+
+[8] Fitz-enz, J.; Mattox, J. R. Predictive Analytics for Human Resources. Hoboken: Wiley, 2014.
+
+[9] George, G.; Haas, M. R.; Pentland, A. Big data and management. Academy of Management Journal, 57(2), 2014, pp. 321-326.
+
+[10] Gorry, G. A.; Scott Morton, M. S. A framework for management information systems. Sloan Management Review, 13(1), 1971, pp. 55-70.
+
+[11] Guszcza, J.; Lewis, H.; Evans-Greenwood, P. Cognitive technologies and the economics of prediction: Harnessing the power of machine learning. Deloitte Review, 20, 2017, pp. 40-55.
+
+[12] ISO 31000:2018. Risk Management - Guidelines. Geneva: International Organization for Standardization, 2018.
+
+[13] ISO/IEC 25010:2011. Systems and Software Engineering - Systems and Software Quality Requirements and Evaluation (SQuaRE) - System and Software Quality Models. Geneva: International Organization for Standardization, 2011.

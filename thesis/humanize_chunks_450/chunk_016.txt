@@ -1,0 +1,98 @@
+**Analysis Routes:**
+
+- `GET /analysis` – Displays input form with last-used values pre-populated
+- `POST /analysis` – Processes form submission; action parameter (run-analysis, import-provider, csv-upload) determines processing path
+- `GET /history` – Lists prior analyses with user/role filtering
+- `GET /analysis/<id>` – Displays stored analysis details
+- `GET /analysis/<id>/pdf` – Streams PDF export as application/pdf
+
+**Dashboard Routes:**
+
+- `GET /dashboard/<role>` – Renders role-specific dashboard (CEO, HR, Finance, Operations)
+
+**Response Context Objects:**
+
+**AnalysisResult:**
+```
+{
+  "company_name": string,
+  "analysis_id": integer,
+  "created_at": ISO 8601 timestamp,
+  "inputs": { 14 input fields },
+  "kpis": {
+    "lrs": { "score": 0-100, "band": "Low/Moderate/High", "narrative": string },
+    "srs": { "score": 0-100, "band": "Low/Moderate/High", "narrative": string },
+    "fsc": { "score": 0-100, "band": "Low/Moderate/High", "narrative": string },
+    "ohi": { "score": 0-100, "band": "Low/Moderate/High", "narrative": string }
+  },
+  "ml_prediction": { "probability": 0-100, "confidence": 0-100 },
+  "recommendations": [ string, string, ... ],
+  "trend": { "prior_ohi": 0-100, "ohi_change": -100 to +100, "direction": "improving/stable/degrading" }
+}
+```
+
+### Appendix D: System Deployment and Operations
+
+**Local Development Deployment:**
+
+```bash
+# Create and activate virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Initialize database
+python -c "from data_store import init_db; init_db()"
+
+# Start Flask server
+python app.py
+
+# Access at http://127.0.0.1:5000
+```
+
+**Demo Credentials:**
+
+| Username | Password | Role | Purpose |
+|----------|----------|------|---------|
+| admin | admin123 | admin | System administration |
+| ceo_demo | demo123 | ceo | CEO dashboard access |
+| hr_demo | demo123 | hr | HR dashboard access |
+| finance_demo | demo123 | finance | Finance dashboard access |
+| ops_demo | demo123 | operations | Operations dashboard access |
+
+**Production Considerations:**
+
+- Replace SQLite with PostgreSQL for concurrent multi-user workloads
+- Implement CSRF protection on state-changing forms
+- Enable TLS/HTTPS termination and request logging
+- Rotate demo credentials; implement LDAP or OAuth integration
+- Add structured audit logging for authentication and sensitive queries
+- Document data retention and deletion policies
+- Implement rate limiting and brute-force protection
+
+### Appendix E: Machine Learning Model Details
+
+**Training Data Generation:**
+
+1. Generate 500 synthetic organizational profiles by random sampling from valid input ranges
+2. For each profile, compute deterministic KPIs (LRS, SRS, FSC, OHI)
+3. Normalize outputs to probability scale (OHI/100 = probability estimate)
+4. Create feature vectors [inputs, normalized_leadership, normalized_digital, ..., normalized_growth]
+
+**Model Architecture:**
+
+- Algorithm: scikit-learn GradientBoostingRegressor
+- Parameters: n_estimators=100, learning_rate=0.1, max_depth=3
+- Train/Test split: 80/20 using fixed random seed for reproducibility
+- Loss function: Mean Squared Error
+
+**Model Performance Metrics:**
+
+- Train R²: ~0.87
+- Test R²: ~0.84
+- Mean Absolute Error (MAE): ~8.5 (on 0-100 scale)
+- Cross-validation (5-fold): CV R² = 0.83 ± 0.03
+
+**Feature Importance Ranking (Approximate):**

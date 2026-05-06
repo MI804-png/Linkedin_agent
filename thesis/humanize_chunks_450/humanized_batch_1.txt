@@ -1,0 +1,723 @@
+﻿Role Based HR Management Analytics System Design And Implementation
+
+Mikhael Nabil Salama Rezk
+Neptun Code: IHUTSC
+Mark Kovacs computer engineering university consultant
+Computer Engineering Degree Program
+Budapest University of Technology and Economics
+Year: 2025
+
+---
+
+TABLE OF CONTENTS
+
+INTRODUCTION	3
+
+1. Introduction Problem Definition
+1.1. Problem Context and Motivation	5
+1.2. Core Problem Statement	6
+1.3. Thesis Objectives	7
+1.4. Scope and Boundaries	7
+
+2. Literature Review and Related Work
+2.1. Human Resource Information Systems (HRIS) and Decision Support	9
+2.2. People Analytics and Organizational Risk Assessment	10
+2.3. Transparency and Explainability in Business Intelligence	11
+2.4. Research Gap and Thesis Positioning	12
+
+3. System Design Architecture 13
+3.1. Architectural Overview and Layered Design	13
+3.2. Data Model and Input Dimensions	14
+3.3. KPI Design and Normalization Strategy	15
+3.4. Role-Based Dashboard Architecture	17
+3.5. Machine Learning Support Layer	18
+
+4. Implementation and System Development 20
+4.1. Technology Stack and Dependencies	20
+4.2. Core Modules and Responsibilities	21
+4.3. Functional Workflow and Data Processing Pipeline	23
+Structure of the data storage system along with how information gets saved appears on page twenty five.
+Report generation in PDF format along with export options appears on page 26
+
+5. Results Evaluation System Validation
+Section 5.1 looks at how checks are done plus what parts get tested
+5.2. Observed Results and System Performance	30
+5.3. Practical Application and Use Cases	31
+
+6. Conclusions Limitations Future Work
+6.1. Key Findings and Contributions	32
+6.2. Limitations and Constraints	33
+6.3. Future Work and Enhancement Opportunities	34
+
+SUMMARY	36
+
+List of Figures 38
+
+REFERENCES	39
+
+ATTACHMENTS	43
+
+---
+
+INTRODUCTION
+
+Data shapes choices more every day inside companies. When it comes to people, money, or daily workflows, leaders must piece together numbers from different areas - like staff stats, budget figures, even output rates - to build clear insights fast. Even though tools exist to help, plenty still depend on scattered summaries, hand-built Excel sheets, yet separate views per department that barely talk to one another behind the scenes.
+
+One big mess splits things apart, leaving leaders without clear sight of how the company truly runs. Because every team measures success differently, their take on strategy rarely matches up. Hidden mechanics inside paid analysis software make people doubt what the machines suggest. Top bosses need systems pulling info from everywhere - yet those tools must also show how they reach conclusions. How numbers get picked and ranked should never stay a secret.
+This work tackles real problems through a people-focused analytics setup built on clear roles, where scores make sense and data flows together without confusion. Company details, leader traits, funding history, money results, plus day-to-day operations - all feed into one connected view. Instead of hiding how answers are reached, it shows every step, making methods visible and decisions easier to follow. Each role gets its own dashboard, complete with open formulas and consistent reports anyone can check or repeat.
+
+Now here's something built on real need, not just ideas. It shows - through actual study - that clear machine reasoning pairs well with rule-driven design inside live setups. On the ground level, it becomes a working tool, one firms might put into place when shaping strategy, spotting risks, or checking how well they operate. What backs it up isn’t flash but purpose.
+
+---
+
+1. Introduction and Problem Definition
+
+1.1 Why This Matters
+
+Data piles up in companies through areas like staff management, money handling, and daily workflows. From paychecks to job history, people-related details get logged inside HR tools. Profit numbers, debts, income movement, and how assets are used show up in financial records. Work processes leave traces too - efficiency scores, weak points, stages of development, and where risks stack up. Even though all this exists, it rarely connects; each team looks at their own piece alone. Separate methods, separate views, separate conclusions slow down clear understanding across departments.
+
+Leadership teams now confront a core issue - seeing the full picture of how their organization really functions. Because readiness at the top, money strength, daily risks, and staff reliability often get reviewed alone, decisions miss connections across areas. Without clear links between these factors, setting priorities becomes guesswork. That gap hits hardest in medium firms or those expanding quickly, where tight budgets block access to unified analysis tools. [6][11]
+
+Hidden workings inside corporate BI tools spark another reason to act. Dashboards appear without revealing how formulas, scores, or math behind them actually function. Without clarity, trust erodes when leaders make choices based on unclear results. Checking accuracy becomes harder. Oversight falters. Reliance grows on outside help just to understand internal reports. Firms now push back - wanting systems that show their reasoning step by step
+
+1.2 Core Problem Statement
+
+One big issue this work tackles? A lack of clear systems that track leadership strength, growth risks, money stability, besides day-to-day durability - all at once. Right now, most tools fall short in serious ways
+
+1. Over here, HR tracks its own numbers while finance watches different ones. Meanwhile, operations measures something else entirely - no shared system connects them. One team’s results rarely line up with another’s metrics. Because of that, spotting patterns across departments gets tricky. Insights stay trapped inside each area’s reports. What one group learns doesn’t automatically reach the others. Data lives in separate worlds, even when they should overlap.
+
+2. Hidden rules behind scores show up when companies keep their math secret. Users left guessing can neither check nor change how results form. Without clear views into decisions, oversight wobbles. Trust slips slowly.[20][21]
+3. Only big players can afford top-tier data tools - cost and complexity shut out smaller teams. Custom tweaks? Forget it. Built-in limits block niche uses every time.
+
+1.3 Thesis Objectives
+
+This work sets out to meet these goals
+
+1. Start with clear rules everyone can check. Build the scoring system so it shows how numbers get adjusted. Let specialists see each step used to combine results. Shape the math so weights are open to change. Make every part something someone else could test later. Finish only when outsiders find nothing hidden.
+
+2. A working software model gets built to show how data from different organization areas can come together in one analysis setup. This version proves the concept actually runs when tested across several departments. Pieces of information link up through shared structures allowing insights to emerge clearly. The trial setup handles inputs from separate sections without losing accuracy or speed. Testing confirms alignment between systems happens smoothly using this method.
+
+3. Picture a CEO glancing at a screen showing only what matters most - revenue shifts, market position - not buried in spreadsheets. For HR, numbers turn into stories about team morale and turnover patterns on their own tailored view. Finance teams see cash flow rhythms and cost trends without extra clutter, shaped just for them. Operations leaders get real-time updates on supply chains and bottlenecks through visuals built around daily demands. Each dashboard strips away noise, leaving only signals tied directly to how people actually make choices in those seats.
+
+4. Start by checking how the system behaves at its limits using edge cases. Then explore different situations it might face during real use. Performance needs to stay steady when tested under actual conditions. Clear outcomes matter just as much as consistent results. Success shows up when behavior makes sense across varied tests.
+
+5. Start by building something sturdy enough to grow on its own. Move forward step by step, making space for real-time HRIS links later. Let smarter algorithms join in when ready. Plan ahead so predictions stretch further into the future. Change won’t demand starting over. Structure stays intact while pieces upgrade around it.
+
+1.4 Scope and Boundaries
+
+Included Scope:
+
+- Rule-based KPI computation engine with explicit formulas and normalization logic
+- Local machine learning model (gradient boosting regressor) for comparative probability estimation
+Role Specific Dashboards CEO HR Finance Operations
+History of analyses sits right there on your device using SQLite. User data stays put too thanks to that same setup. It keeps things steady without needing outside help. Everything runs smooth because it leans on a proven method behind the scenes
+- PDF report generation for archived analyses
+- CSV batch ingestion workflow with row-level validation
+- Demo authentication and authorization framework
+Web Interface Built with Flask HTML CSS JavaScript
+
+Out of Scope:
+
+Live HRIS API connections to outside HR systems
+- Cross-company benchmarking against external industry datasets
+- Cloud-scale or distributed deployment infrastructure
+- Advanced machine learning techniques (e.g., deep learning, time-series forecasting)
+- Multi-currency or multi-language support
+- Production-grade enterprise security hardening
+
+A focused approach fits well here, letting the student test both analysis methods and design structure without stretching beyond what's manageable during a thesis period. Time and tools stay realistic when goals are set like this.
+
+---
+
+2. Literature Review and Related Work
+
+2.1 Human Resource Information Systems and Decision Support
+
+Out of old record-keeping tasks came today’s smarter people systems. Once stuck handling paychecks, insurance forms, and legal paperwork, they’ve slowly changed shape. Now? They spot patterns - like who might leave, how teams grow, what salaries fit where. Some even guess future staffing needs before anyone asks. These shifts didn’t happen fast. Years of quiet upgrades added up behind the scenes. Tools once used for counting now help leaders decide. Not just tracking workers but shaping workplaces.[2][9]
+
+Most studies on Decision Support Systems suggest machines work best beside human experts, not in place of them. Because real choices inside companies face limited data, competing goals, and tight resources, clear models help people decide more wisely. When processes leave a trace, outcomes tend to get better under pressure. [18][25]
+
+Most modern HR systems now see data about employees as a key tool for smart decisions. Research by Becker, Huselid, and Ulrich shows firms treating staff like valuable resources tend to earn more money. To get real benefit though, companies need methods linking workforce numbers directly to company results
+2.2 people analytics and assessing organizational risk
+
+Looking at people data reveals key clues about who stays or leaves a company. Leadership strength along with how ready teams are for change plays a big role too. Stability across the workforce often shows up clearly when numbers get reviewed. Engagement levels give signals about team health over time. Studies by Fitz-Enz and Mattox show using such insights helps reduce turnover. Better results pop up in daily output when choices rely on evidence. Performance across the organization tends to rise under these conditions. These findings appear in sources labeled eight and twelve
+
+Most studies on company risks point out weak spots tend to cluster. One person holding critical knowledge creates exposure, just like shaky workflows or heavy debt loads. When staff turnover spikes, problems often follow. Regulatory standards such as Basel III stress looking at money matters alongside how things run day to day. People factors matter too. A full picture of danger means connecting these pieces.[1][15]
+
+Still, many business tools zoom way too close on people stats or work in separate bubbles. Big-picture ways to weigh risks are often missing, especially when clear methods matter most. [3][4]
+
+2.3 Clear Insights in Business Data
+
+Most studies now point to a flaw in opaque machine learning when used inside organizations. Work on explainable systems suggests clarity matters, especially when choices impact lives, budgets, or long-term plans. [11][27]
+
+Starting off differently, Davenport and Harris showed how companies using data well must back both tools and people skills. Not just buying software matters - building know-how across teams does too. What stands out is their point about rules guiding data use inside firms. Their research underlines that strong analysis needs structure plus skilled staff working together. Investment spreads beyond machines into learning and decision practices. [6]
+
+Complex models versus clear ones create constant pushback. Though advanced algorithms predict better, simpler rule-driven systems win on trust inside companies, ease of review, plus fitting legal demands. Some teams now blend both - relying first on open rules they can stand behind, while using machine smarts quietly beside them to compare outcomes. [16][19]
+
+2.4 research gap and thesis positioning
+
+The research literature reveals three significant gaps:
+
+1. Still, many HR systems work alone. Not often do they link up with finance or operations data. Rarely does that connection happen smoothly in tools people can actually reach. What sticks around is a split - analytics stay boxed in separate departments.
+
+2. Most commercial tools value prediction precision more than clarity in how decisions are made. Yet businesses now want systems that can be reviewed easily, where choices are clear. Though complex models deliver sharp results, trust grows when logic is visible, not hidden.
+
+3. Smaller groups often miss out because big data tools cost too much. Complexity stacks up, making setup tough without dedicated teams. High prices block entry where budgets are tight. Custom needs get ignored when systems demand rigid structures.
+
+This study fills those voids using an open, unified analysis system - linking rule-driven performance metrics with localized machine learning tools. Because clarity in methods matters, it emphasizes clear tracking plus visuals shaped by user roles. Proof shows trustworthy decision aids are achievable even when research budgets or institutional capacities are tight. [5][10][17]
+
+---
+
+3. System Design Architecture
+
+3.1 Building Layout and Levels
+
+A design unfolds across four layers, each keeping its job distinct through clean boundaries. One layer handles tasks apart from the others, building clarity step by step. Work moves forward because responsibilities stay split on purpose. Structure grows not by accident but by careful division of duties
+
+Up front sits the presentation stuff - Flask spins up HTML pages, while clean layouts come alive via CSS that adapts on any screen size. Interaction happens through plain JavaScript running in the browser, making buttons respond and forms work smoothly. Logging in? That check happens here, along with gathering what users type into fields. Dashboards pop up right in the view, built fresh each visit. When someone wants a PDF, this part kicks off the process without fuss.
+Behind the scenes, a web framework handles navigation through pages. It keeps track of user activity during visits while checking incoming data carefully. Instead it directs tasks where they need to go for processing. Security steps confirm identity before allowing access. Responses get shaped properly so screens display the right information. Each piece fits together without drawing attention.
+
+Computing happens here, where numbers get turned into scores through fixed rules. Outcomes are built by combining values using set weights, nothing left to chance. Each piece works on its own, separate from website functions, making checks easier. Rules decide how data moves, no guesswork involved. Predictions come out after steps that always follow the same path.
+
+Holding everything together sits a lightweight database system built right into the app. Stored inside are your login details, kept safe and ready when needed. Past scans get filed away automatically, building up a record over time. Bits of background info about each result also get saved along the way. Consistency across sessions comes naturally because of how pieces connect behind the scenes. Spotting changes over weeks or months becomes possible thanks to steady recording underneath.
+
+Putting things in layers makes upkeep easier, testing smoother, one piece at a time. Validation in the analytics part works fine even when web routes change completely. Stronger systems like PostgreSQL can upgrade the storage side while analysis stays untouched. Each section grows on its own, yet fits together when needed most.
+
+3.2 Data Model and Input Dimensions
+
+Inputs get sorted by the system - three themes do the job. One comes first, then another joins after that. Each piece fits somewhere inside these groups
+
+Leadership and people
+- Leadership Years: accumulated tenure in leadership roles
+Digital Maturity Score 1 To 10 Scale For Organizational Capability
+- Retention Percentage: proportion of workforce remaining year-over-year
+Some folks leave by choice. Others get let go. The number tracks both kinds of exits together. Turnover shows up here. People stop showing up for work. That gets counted too. Every exit matters when looking at the total
+
+Domain Two Risk and Operations
+Process Documentation Score measures how well teams write down their work steps
+Key Person Dependency Score Measures Critical Skill Concentration
+Debt to Equity Ratio measures financial leverage
+Process Fragility Score Measures Risk From Scattered Responsibilities
+
+Financial Performance Domain Three
+Here is how much money stays after costs take a bite out of sales. The number shows earnings before interest and taxes, or what's left at the very end, measured against total income. It tells whether business keeps enough when everything else gets paid
+Revenue change measured each year compared to the last. One figure shows how much more came in than twelve months prior. This number reflects only shifts across full annual cycles
+- Cash-on-Hand Months: operational runway based on burn rate
+Employee Count Reflects Organization Size
+
+Inputs get scaled to a common 0–100 range so weighting can combine them fairly across fields. Because some concepts lose impact at extremes, certain scores bend gradually after hitting key points. Where logic supports it, the scaling shifts in steps or tapers off like effort yielding less gain over time.
+
+3.3 KPI Design and Normalization Strategy
+
+The system computes four principal indicators:
+
+Leadership Readiness Score LRS Formula One
+
+LRS comes from multiplying Normalized Leadership Years by 0.40, then linking that with Digital Maturity times 0.35, followed by adding in Retention Percentage at a weight of 0.25
+
+What you see here shows how ready a group is to handle big shifts and long-term plans. Leadership that's been around awhile brings one kind of strength. Facing today’s tech-driven demands adds another layer. People staying put in their roles holds it together. Together, these pieces shape what an organization can do when things need to change.
+
+Scaling Risk Score SRS Formula Two
+
+Churn rate weighs heavily in the formula, making up three tenths of the total score. One quarter comes from reliance on certain team members who are hard to replace. Another slice, also twenty five percent, ties back to how much financial debt impacts operations. Processes that break easily add a smaller portion, just two tenths, to the overall risk value. This mix builds the final number used for stability assessment.
+
+Out of balance, this measure shows how shaky a company gets when trying to grow. When numbers climb, the danger of stretching too thin grows too. People coming and going messes with stability, while relying on just a few key players adds pressure. Money limits squeeze options at the same time weak processes fall behind. Each piece points to where things might break under speed.
+
+Financial Stability Composite Formula Three
+
+Here’s how the formula breaks down: four-tenths of profit margin, followed by growth rate at thirty-five hundredths, then a quarter tied to cash position - that makes up FSC. Line three shows it clear
+
+One way to see how well a company can handle tough times is by looking at its cash flow and time before funds run out. Profit matters because it shows staying power, expansion reveals where the business stands among rivals, while ready access to money allows room to move day to day. How long it lasts ties together earnings strength, customer reach gains, yet depends on spare capital available.
+
+Organizational Health Index OHI Formula Four
+Here is how OHI breaks down: four tenths comes from LRS, while a bit more than a third uses one hundred minus SRS, then nearly a quarter ties to FSC
+
+Picture this: the OHI blends three key pieces into one clear score for how well an organization runs. When that number climbs, it means things are working smoother, with stronger footing for big moves ahead.
+
+Most formulas treat every factor the same when no expert insight guides them, though they can shift if a group decides some matter more. Outliers get tamed by built-in limits so numbers stay balanced. Clear records show how choices were made, opening space for checks or updates later.
+
+3.4 Role-Based Dashboard Architecture
+
+From the user’s position comes a tailored look at data, shaped by what they’re allowed to decide plus what they need to know
+
+Top leaders see what matters most - signs of long-term strength, room to grow, space ahead. Big picture signals like OHI, LRS, SRS take center stage instead of daily numbers. What shows up reflects stability, future paths, hidden pressures beneath. Details fade when direction speaks louder. Trends shape decisions more than isolated reports. Risk isn’t listed - it’s woven into each view shown.
+
+Starts with how leaders grow inside the company. What happens next often ties to who stays or leaves unexpectedly. Some pieces stand out - like tracking team shifts before they occur. Readiness shows up when roles need filling fast. Patterns appear where experience gaps slow things down. Future steps link closely to current preparation levels.
+
+Running low on cash? This view tracks how long funds will last. Money stress shows up through debt loads. Growth that lasts needs solid numbers behind it. Watch borrowing levels closely. Key parts of financial stability take center stage here. Ratios reveal just how stretched finances really are.
+
+Start strong with how well things run day to day. Look closely at whether steps are written down clearly. A single person holding vital knowledge slows progress. Watch where growth hits roadblocks unexpectedly. Risk hides in unseen links between tasks. Smooth operations depend on more than just effort. Maturity shows when systems keep working under pressure.
+
+One score at a time, every screen shows clear KPIs shaped for specific jobs - color-coded risk levels sit beside short explanations, then next steps follow. Because roles differ, what appears shifts slightly, matching each person’s scope of choices and control.
+
+3.5 machine learning support layer
+
+A different type of prediction system, built using gradient boosting, helps estimate likelihoods in comparison. Instead of real outcomes, it learns from artificial results made by a fixed KPI calculator. Because it studies these simulated patterns, it can mirror rule-driven outputs closely. At the same time, it adds another layer of uncertainty ranges alongside its guesses.
+
+The ML Layer Handles Three Tasks
+
+1. When machine learning guesses differ from fixed-rule results, it shows where those rules might need adjusting.
+
+2. Some machine learning models show how sure they are about their guesses. This helps people making choices understand the limits of those predictions. Confidence levels act like guardrails, pointing out when results might be shaky.
+
+3. Down the line, machine learning opens doors - step by step - to sharper predictions while keeping today's clarity intact. Each upgrade builds quietly on what already works.
+
+Most crucial of all, the machine learning part doesn’t take over fixed performance rules. Instead, it offers insights alongside traditional methods, working beside human oversight instead of stepping into choices about company direction or staff outcomes.
+
+---
+
+4. Implementation and System Development
+
+4.1 Tools and Software Used
+
+Programming Environment:
+- Python 3.11.1 for application and analytics runtime
+A space set apart for tools that keeps them separate from others, making it easier to rebuild later. One spot where everything needed fits neatly without mixing up with outside parts. Keeps work consistent across different machines by locking down versions used inside
+
+Web Framework:
+Routing web requests happens through a lightweight tool that handles page navigation. Page visits stay connected using stored user data between actions. Templates come alive when filled with content on the server side. A small framework takes care of these tasks behind the scenes
+- Werkzeug for request handling and password hashing utilities
+
+Data and Analytics:
+- NumPy for numeric array operations and linear algebra
+- Pandas for structured data manipulation and analysis
+- scikit-learn (Gradient Boosting Regressor) for machine learning support
+
+Persistence:
+- SQLite (standard library) for embedded relational database
+- JSON serialization for flexible payload storage
+
+Report Generation:
+Generating PDFs with ReportLab follows a fixed path each time you turn saved data into documents
+Frontend:
+- HTML5 for semantic page structure
+Styling adjusts smoothly across devices using modern techniques. Layout shifts naturally when screen size changes. Visual details stay sharp on any display. Design elements respond without losing clarity. Appearance improves through subtle enhancements built into the framework
+Just vanilla JavaScript runs the show - lightweight, no extra baggage. It handles small tasks without needing more tools. A clean approach keeps things fast. This method skips big frameworks entirely. Simplicity stays front and center throughout. Speed comes from doing less, not more
+- Jinja2 templates (via Flask) for server-side rendering
+
+DevOps and Reproducibility:
+- requirements.txt for locked dependency versioning
+- .gitignore for version control hygiene
+- README.md for operational documentation
+
+Running things works straight out of the box. Everything stays open, clear, while needing only basic tools to keep going.
+
+4.2 Core Modules and Their Roles
+
+Starting the app happens in app.py. This file sets up how pages connect through routes. It runs everything using Flask as the base. Routing paths are managed right here alongside startup logic. The main control lives inside this single script
+Routing HTTP requests begins with login, then moves to analysis. Following that, history access opens up alongside dashboard views. Export features come next in line after those steps complete
+- Manages session-based authentication and user context
+- Constructs template rendering context
+- Delegates business logic to specialized modules
+
+analysis engine py computes kpis deterministically
+- Input validation and boundary clamping
+Putting different kinds of data onto a shared scale so they can be compared more easily
+Weighted Calculation of LRS SRS FSC OHI
+- Generation of qualitative risk bands and narrative recommendations
+One thing stands clear: it runs free of Flask's baggage. Pulling it into Python scripts feels straightforward, no hurdles. Testing? Just bring it in like any module would be brought in. Not tied down, not tangled - just works when called upon
+
+ml_engine.py – Machine learning support
+- Synthetic training data generation from KPI engine outputs
+Gradient Boosting Regressor trained and saved
+- Prediction and confidence interval computation
+- Feature importance approximation for interpretability
+
+data_store.py – Persistence and data access
+- SQLite schema initialization and migration
+- User authentication query patterns
+- Analysis record insertion and retrieval
+- Role-aware filtering for history queries
+- Trend computation from historical records
+
+reporting.py handles the creation of PDF files through a structured workflow
+- Analysis result aggregation from stored snapshots
+Building PDFs using ReportLab
+Formatting tables comes first, then stories get written after that. Metadata shows up alongside everything else, quietly filling gaps between sections
+- Deterministic reproduction from stored analysis identifiers
+
+Managing thesis sections through section_data.py
+- Structured data model for thesis document sections
+Figure labels and links need tracking info
+Support for generating thesis PDFs
+
+generate documentation script creates thesis pdf files
+- Markdown parsing and conversion to PDF format
+- Page enumeration and numbering logic
+- Style application for thesis formatting compliance
+
+Because it’s built in pieces, each part connects loosely. Testing becomes simpler that way. Changes can grow into smarter features later, even years down the line. Structure stays intact, no overhaul needed.
+
+4.3 Functional workflow and data processing pipeline
+
+Manual Analysis Workflow:
+
+1. Logging happens when someone enters a name and a secret code. The system checks these details by comparing them to scrambled codes stored in a small database file. If things match, a temporary key gets created for that visit.
+
+2. Starting at the analysis page, users fill out a set of 14 number-based inputs alongside choices like industry type and business phase. After moving through the form, each person selects categories while typing specific figures into labeled boxes. The process begins when someone opens the section meant for data entry, then adds both measurable values and dropdown answers. Entering details kicks off once the user reaches this area, supplying facts grouped as counts or classifications. As navigation completes, numerical entries appear together with picks made from defined groups such as field of work or development level.
+
+3. When data comes in, it gets turned into the right format first. Then adjusted if too high or too low to fit limits. Each piece is tested to make sure nothing's missing. If something fails, all problems are collected neatly. Clear hints help figure out what went wrong.
+
+4. Out of ten? Every value gets scaled that way, shaped by what the field needs. One after another, four key measures appear - each built by clear math steps shown earlier. Numbers line up, then transform through fixed logic, nothing left to guess.
+
+5. Out of nowhere, a synthetic feature set gets fed into a pre-trained Gradient Boosting Regressor. Following that step, a probability value appears alongside its matching confidence range. Though it sounds technical, the flow stays straightforward - input, then output. Each piece connects without extra noise. From start to finish, one leads to the next like steps on a path rarely walked.
+6. One score pulls together the risk level - low, moderate, or high - using OHI cutoffs. From preset rules, short written advice forms automatically. Trends along with key performance pieces are gathered into one view.
+
+7. Persistence happens when each full analysis - its inputs, outputs, time stamp, who ran it, plus where it came from - is saved. The data gets turned into JSON format before storage. A local database handles the rest, using a dedicated table built for these records. Every entry stays there, unaltered after written. Nothing vanishes unless removed by design. Retrieval keeps close to original structure. Each field remains reachable exactly as captured.
+
+8. Out of the data flow comes a set of visual summaries, shaped by what was found earlier. Each card forms based on past reviews, pulling in shifts over time. Instead of isolated numbers, patterns appear beside old results. Insights take shape through charts that highlight movement. Suggestions emerge where differences stand out most.
+
+CSV Batch Workflow:
+
+1. A single CSV file gets picked by the person - must follow the set layout exactly. Fourteen columns, placed just right, one after another in fixed sequence. This format matters because mismatched order breaks things down. Each field has its place; skipping isn’t an option. The system expects it that way, nothing else.
+
+2. One row at a time, the system reads CSV data without loading everything into memory. As each line comes in, it gets processed immediately instead of waiting. This way, huge files won’t crash the machine by filling up available space. Step by step, parsing happens just enough to keep going. Memory stays clear because nothing extra is stored along the way.
+
+3. Starting fresh every time, each line gets checked for correct fields, adjusted to right types, kept inside allowed ranges, replaced when empty. Notes build up along the way - like “field_name filled in with value.”.
+
+4. One step at a time, each verified row moved into a fixed KPI system. Outcomes began to pile up from there.
+
+5. Top performers come first - sorted by OHI, showing stronger team well-being. Each entry includes typical likelihood scores beside spread of potential issues. Order reflects stability, measured through combined signals across groups.
+
+6. One row after another became its own analysis entry, tied to the batch it came from. Still, every piece stayed separate yet connected through the identifying group tag. Through this setup, individual results held their place while sharing a common origin point. Even when processed together, each maintained independence under one reference mark.
+
+7. Out of the batch came a summary, complete with ranked results laid out plainly. Alongside it, notes on validation stacked into one line at the bottom. Metrics appeared averaged, shown without fanfare near the end. The whole thing stayed compact, just enough detail to make sense.
+
+This approach puts reliability first, not speed - fitting for work done as part of a research project. What matters here is clarity when checking each step, more than squeezing out efficiency.
+
+4.4 Database Design and Data Storage Approach
+
+Users Table:
+
+```
+Id integer primary key
+username (TEXT, UNIQUE)
+password_hash (TEXT)
+Who holds the position – could be someone like an administrator, a chief executive, manager handling people matters, one focused on money tasks, or someone running daily activities.
+full_name (TEXT)
+created_at (TIMESTAMP)
+```
+
+Analyses Table:
+
+```
+id integer primary key
+company_name (TEXT)
+industry (TEXT)
+stage (TEXT)
+created by integer foreign key references users id
+created_at (TIMESTAMP)
+source (TEXT) – manual, batch
+provider (TEXT, NULLABLE)
+batch_name (TEXT, NULLABLE)
+payload_json (TEXT) – validated inputs
+Computed KPIs along with forecasts appear here as result_json in TEXT format
+```
+
+One step at a time, it handles multiple users by keeping data separate per person. Queries know who's asking because roles shape what shows up. When results need saving, snapshots lock them in place. Instead of rigid fields, JSON holds changing model details without breaking stride.
+
+4.5 Pdf reporting and export functionality
+
+Right away, the system puts together PDF files that hold findings exactly as they appear when saved. These reports travel well, staying clear no matter where they go
+
+Right there when you need it. Data pulled straight from saved moments, never reworked later. That moment stays frozen like a photo. Even if rules change down the road. What showed up then shows up now. No surprises, just what was seen. Formulas shift? Doesn’t matter. The past stays put.
+
+Report Structure:
+A first look shows the firm's title right up front. The day the review started sits near the top too. Each document carries a tag so origin is clear
+- Executive summary with verdict, risk band, and narrative
+- KPI snapshot table with scores and interpretations
+- Input submission table for auditability
+- Recommendations list derived from rule-based logic
+Maybe include a machine learning score part showing how likely things are plus what factors mattered most. Sometimes leave it out depending on needs
+
+Every time you feed it the same input, out comes a PDF that matches down to each byte - repeatable results sit there waiting every single run. Matching bytes mean checks for changes work without guesswork, proof of consistency built right in.
+
+Still, it handles oversight needs without losing touch with everyday report work. How? By keeping rules clear but not heavy handed when tracking or recording tasks.
+
+---
+
+5. Results Evaluation System Validation
+5.1 How We Check Accuracy and What Gets Tested
+
+Validation scope encompasses six categories:
+
+1. Logging in works right when roles match correct passwords. Wrong details block entry every time. Access stays limited by assigned roles across secure pages. Hitting restricted areas without signing in sends you back to the start page. Only admin accounts pull up full data sets. Regular users see just what they submitted themselves.
+
+2. Checking how number inputs behave when pushed to limits. At lowest allowed entry, system holds steady without breaking. Highest accepted value also works smoothly within set rules. When given numbers too small or way too large, they get adjusted silently into range. Empty entries trigger built-in fallbacks automatically. Text where numbers should be slips through quietly but leaves a trace. Errors do not crash anything, just record what happened behind scenes. Adjustments appear later in logs as plain markers of intervention. Each odd case plays out predictably on second look.
+
+3. Same numbers go in, same results come out - every time. When we adjust inputs on purpose - say, bump up leadership tenure by a fraction - the scores shift just like they should. Outputs for LRS and OHI move in line with those tweaks, nothing more, nothing less.
+
+4. Some rows come messy - strange industry names, numbers that aren’t really numbers, blank spots. Even then, the process keeps moving, never stops mid-file. Each odd entry gets a quiet note, logged but not rejected. When totals form at the end, rankings still add up right. What comes out shows exactly where data stumbles.
+
+5. Even when restarted, the system holds on to past results just fine. Retrieval happens smoothly, tied to who asked and what they’re allowed to see. When someone checks the same business multiple times, shifts in scores like OHI become clear over time - noticing slow climbs or slips between tries.
+
+6. When you save a report as a PDF, it holds every detail - business data, key results, raw inputs, advice notes, maybe even machine learning insights. Each time the same study gets exported, the file matches down to the last digital piece. Even if settings shift later, older versions still line up just like before. What comes out today looks exactly like what came out months ago, no surprises. Identical runs mean identical files, nothing added, nothing missing. The record stays fixed, regardless of updates elsewhere. Every export ties back cleanly to its original version.
+
+5.2 Observed Results and System Performance
+
+Functional Validation Outcome:
+Every one of the six checks passed smoothly during testing. Notable details followed
+
+Every login process finished just like the rules said. When someone tried to get in without permission, they were blocked right away.
+Testing edge cases showed values were adjusted correctly. When inputs went beyond limits, fallbacks kicked in smoothly. System stayed stable throughout every trial. Unexpected entries did not cause failures. Defaults applied where needed. Boundaries held under pressure. No breakdowns occurred during stress checks.
+Outputs matched every time inputs stayed the same, showing clear number patterns. Mathematical consistency was visible each run under equal conditions.
+Starting with small batches, the system handled test CSVs containing between fifty and a hundred entries while gathering correct validation feedback. Each file moved through checks without skipping steps, building logs along the way instead of rushing ahead. Though simple in design, every step made space for errors to be seen clearly, leaving room for later review. Processing stayed steady even when data varied slightly in format or structure.
+Most past searches now sort right - by person and job type. Arrows showing patterns moved just like they should have. Direction shifts lined up with what was predicted earlier in the week.
+Out of different analysis files came clean PDFs, every one matching its original down to the last byte. A close check showed each result stayed exactly the same when made again.
+
+Performance Characteristics:
+One step takes fourteen numbers, delivers four key figures plus a machine forecast - finishes under one hundred milliseconds using regular gear. Handling a hundred-line spreadsheet? That wraps up in less than three seconds. Every report snapshot builds into a PDF right after, each taking no more than half a second.
+Scenario-Based Testing Results:
+A close look at different company situations showed clear patterns. A growing business in good health stood apart from others through its numbers. Instead of expanding smoothly, one firm battling customer loss revealed stress points in its data. Even when big and established, another organization carried heavy debt loads that shaped its results. With almost no money to spend, a new startup’s metrics told a story of tight constraints. Each situation left a unique mark on the performance indicators
+Growth Stage Healthy Companies OHI 72 To 78 SRS 35 To 42 LRS 65 To 72
+Scaling companies despite high churn OHI forty eight to fifty eight SRS sixty two to seventy two LRS fifty two to sixty two
+Mature High Leverage Companies Ohi 52 65 Srs 48 58 Lrs 68 75
+Capital constrained startups ohi 38 to 48 srs 55 to 68 lrs 60 to 70
+
+When inputs shift, the system reacts in clear ways. Different risk levels show distinct behaviors because of how signals change.
+
+5.3 Practical Uses and Real World Examples
+
+Strategic Growth Planning Use Case One
+One tech firm, not too big nor small, checks its growth plans using a CEO dashboard. At 68, the OHI reads moderate - not low, not strong either. Leadership strength sits at 72, which means capable people are in place. Yet scaling risk hits 52, held back by an 18% turnover rate plus reliance on just two lead architects. Growth moves slow when talent walks often or power concentrates narrowly. Fixing that means bringing in new hires, writing down workflows, reducing bottlenecks around individuals. For now, leaders hold off on rapid team growth. Progress waits until retention gets better and operations become clearer. Expansion pauses, not stopped - adjusted.
+
+HR Retention Planning Example Two
+Midway through the year, a business focused on daily operations reviews its human resources metrics each month. Starting at 8 percent, staff turnover climbs to 14 over three-month periods, nudging customer response scores up while dragging morale indicators down. As alerts rise in the tracking software, suggestions pop up for focused actions to keep people. Instead of looking firm-wide, managers drill into specific teams where exits cluster. Pay changes follow, shaped around those hotspots. Half a year later, departure rates dip back near 9. Employee sentiment bounces close to earlier levels, hitting 71.
+
+Financial Risk Monitoring
+Every quarter, finance leaders look at updated dashboards. The debt-to-equity ratio climbs to 1.2 from 0.6, pushed up by borrowing for machinery in the new plant. Equipment costs stretch finances - FSC slips down, landing at 58 instead of 75. On another front, OHI falls too, now 65 versus a prior 72. Growth runs into limits; because of that, spending on expansion gets delayed. Cash needs more room to breathe before taking on added debt.
+
+Operations Risk Assessment Use Case Four
+One person handling most tasks scored an 85 - too much weight on just two team members. To fix it, the system pushed better guides plus shared learning sessions across roles. When docs improved and skills spread out, that number dropped to 62. Fewer delays followed. Time lost went down - from 55 to 48. Team health climbed too, lifting from 58 up to 66.
+
+From spotting hidden risks to guiding choices tied to specific jobs, it works well even when users lack deep data skills. A single tool handles varied needs across teams naturally.
+
+6.1 Key Findings And Contributions
+
+This study showed how open, traceable tools for HR data analysis can function inside companies - no closed-source software needed. One part tackles methods, another shapes system design, a third tests real-world use. Each piece builds differently, yet fits together through shared goals.
+
+A fresh look at measurement shows how people, processes, and money connect through clear performance indicators. Instead of hiding behind complicated models, it chooses openness - making results easier to follow without losing depth. Clarity becomes the main goal, proving useful insights do not require tangled math. What emerges is a system where every number has a story anyone can check. Simplicity here does not mean shallow - it means anchored in real use.
+One layer handles analysis while another manages how data is shown online. Because these parts are split, checking the math bits works without touching website stuff. When upgrades happen later, storage and safety pieces can improve on their own. Starting small then moving to live systems feels less like guessing and more like stepping forward.
+
+One working version shows how tasks flow from start to finish, handling hand-fed data, bulk uploads, custom views by job type, past record access, plus document saving in standard format. Tests ran under different company setups show it holds up well, tells apart risk levels clearly, works reliably when mapping goals, spotting threats, checking progress over time.
+
+Management teams see how numbers are made. Not like regular tools that hide the math behind results. Auditors check rules, change them if needed. Control stays inside the company instead of locked away by software makers. Clear sight into performance tracking keeps leaders in charge.
+
+6.2 Limitations and Constraints
+
+Analytical Limitations:
+
+1. Most times, fake examples build the learning behind these systems - crafted by fixed rules instead of drawn from past company results. Because of that, guesses may miss the mark compared to tools shaped by actual records. Real-world patterns often carry hints machines miss when only practicing on artificial cases.
+
+2. Starting fresh each time, experts shape how success measures are adjusted. Because the work sticks to preset methods, actual company results play no part in checking accuracy. Instead of testing in practice, choices rely on familiar patterns from specialized knowledge.
+
+3. Picture stays still. No moving parts over time show up here. Instead of tracking changes step by step, it relies on what users hand in at random moments. Watching shifts as they happen? That never kicks in. Moments get dropped in - then examined - but nothing links them forward. Each look stands alone, frozen.
+
+4. Out here, some tools pull data from the World Bank - others tap into Teleport’s urban ratings or currency shifts to add background. Still, there's no automatic check against sector standards or where rivals stand. While extra layers pop up now and then, core comparisons stay out of reach. Not every gap gets filled, even when outside numbers are within reach.
+
+Technical Limitations:
+
+1. One user at a time works fine with SQLite when showing off a thesis. Yet if more people need access at once, it falls short. For live use, shifting to something like PostgreSQL makes sense. That setup handles real-world demands better.
+
+2. Inputs come through manual entry or file uploads. Live links to HR databases, finance platforms, or running performance screens? Not here. Connection to real-time data streams is missing by design.
+
+3. Some guesswork sits behind how much each piece matters in the machine learning model - direction shows up, yet full clarity misses. Clear rules lay out exactly what happens, though reasons for picking certain limits or importance levels stay hidden.
+
+4. Starting off, the setup offers preset user roles through ready-made demo profiles. Yet missing are safeguards like activity tracking or defenses against cross-site request forgery. What you get lacks the tight security controls typical in live environments. Instead, it runs with basic access rules and no advanced protective layers built in.
+
+6.3 Future Work and Enhancement Opportunities
+
+Quick Improvements Over 6 to 12 Months
+
+1. Employee data flows in real time when systems like Workday or SuccessFactors link directly. A live connection pulls updated headcount without manual entry. Metrics update themselves once integration activates. Software syncs ensure records stay current across platforms. Information moves seamlessly if the right bridge exists. Updates appear instantly with proper interface setup. Systems talk to each other only when connected properly.
+
+2. Start by linking your finance tools - connect QuickBooks or NetSuite directly. This pulls numbers automatically into the system. One step setup means less manual entry. Data flows without needing constant checks. Syncing happens in the background. Reports update as transactions come through. Accuracy improves when systems talk to each other. Mistakes drop when you remove re-typing figures.
+
+3. From old data points, pull out patterns that show where things are headed. What comes next gets shaped by looking back at what already happened. Patterns emerge when past moments link up in sequence. Instead of just seeing numbers, watch how they move over time. One moment connects to another, building a line that hints at future turns. Signals ahead appear once you map shifts across earlier phases.
+
+4. Feature impacts clearer through SHAP methods, offering deeper insight instead of rough estimates. Precision rises when contributions are traced properly, moving past basic summaries. Clearer patterns emerge if the model's decisions unfold step by step. Understanding grows not just from outputs but how each piece shapes results.
+
+Medium Term Upgrades One to Two Years
+
+1. One company’s data can quietly compare to others, giving leaders a clearer picture through shared insights. Metrics gain meaning when seen alongside similar firms, without revealing who provided what. Peer context emerges when results group together, stripped of names but rich in detail.
+2. Start by using past data where company traits connect to later results - think performance markers tied to future earnings bumps or staff staying patterns. Picture software learning those links through examples pulled straight from actual business history. Instead of guessing, it spots trends hidden across years of operations. Patterns emerge when systems study how choices ripple into outcomes like profit shifts or turnover changes. Learning happens by feeding machines clear cause-and-effect cases taken from real organizational paths.
+
+3. On phones, dashboards show live updates through tailored apps. Alerts pop up automatically when systems detect changes. These tools keep users informed without needing desktop access. Interface design focuses on clarity during quick checks. Notifications arrive instantly, linking field work to central data.
+
+4. Break data into parts. See details through teams, regions, or how a company is set up.
+
+Looking Ahead Beyond Two Years
+
+1. Picture a system that learns what works best, then suggests smart moves without being told. Sometimes it follows clear rules, other times it adapts using patterns from data. It spots powerful changes before anyone asks. Decisions get sharper because the tool keeps learning on its own. Suggestions appear when they matter most, quietly guiding choices.
+
+2. Picture this. Leaders tweak one part of how things run - say, hold onto staff a bit longer - and see what shakes out. What happens next shows up clearly. The overall health index shifts. So does preparedness for big goals. A small change now links to later outcomes. Testing choices like this reveals patterns without real-world risks.
+
+3. What drives real change in how organizations perform? Look past simple links between factors. Use models that trace cause and effect. Spot true triggers behind results. Find what actually shifts outcomes instead of chasing patterns by chance. Dig into structures shaping success.
+
+4. Running on a large network means shifting to systems that grow with demand, serving over one hundred groups at once. Access stays controlled through user roles in software delivered online. Security follows strict rules required by law, like SOC 2, HIPAA, and GDPR standards.
+
+Putting it all together, the goal of the thesis holds up. This effort shows a transparent, reviewable system - one that can grow over time - is possible for better organizational insights and strategy, even when budgets and tools are limited in schools or institutions.
+
+---
+
+SUMMARY
+
+This study looked at how unclear decisions happen across organizations when information stays split up. Yet clarity improves once roles guide access to data. A method was built using human resources and leadership metrics joined under one view. Instead of separate reports, everything shows in a single structure. Visibility grows because each person sees only what fits their position. Still, the full picture remains connected behind the scenes. Complexity fades without losing detail. Transparency appears not by showing more but by organizing better. The approach turns scattered inputs into clear pathways.
+
+Most companies today gather tons of information through departments like human resources, finances, and daily workflows - yet they struggle to connect these pieces in a meaningful way. While many paid tools focus heavily on forecasting outcomes, they tend to hide how conclusions are reached, making oversight difficult. This opacity can weaken confidence in decisions. Small teams especially feel the pinch, held back by high prices and steep learning curves.
+
+One way to build it uses four layers stacking business details, leader signs, money numbers, and daily activity inputs into a fixed-scoring machine generating four outputs: how ready leaders are, risk levels for growth, overall cash health, and team condition marks. Clear math steps let managers follow exactly how scores form. Different screen views show findings based on what CEOs care about, then shift for HR focus, finance checks, or workflow tracking. An internal prediction tool adds likelihood rankings - still leaving human-guided rules in charge of conclusions.
+
+Python runs the setup, using Flask for web tasks alongside SQLite to handle data storage - everything built with common tools, nothing custom. Modules split up the work so analytics get tested alone, while upgrades can happen slowly to improve how data sticks around. Instead of live feeds, it takes in batches through CSV files, letting large amounts process at once. Reports come out as PDFs based on fixed snapshots, making results repeatable and easier to check later.
+
+Testing showed login functions work as intended. When users enter data, the system checks it properly before moving on. Key performance indicators come out the same every time they’re calculated. Large sets of records process without errors. Saved results stay consistent across sessions. Exports generate reliably when repeated under identical conditions. Different company types were tested - risk levels adjusted correctly based on their traits. Analysis tasks finish in less than a second. Processing many items at once happens quickly.
+
+Because it uses clear measurements, spotting risks early becomes possible. Dashboards built for particular roles help guide decisions using real data. When formulas are fully visible, oversight stays strong across analyses. Improvement can move forward step by step - no overhaul needed later on.
+Clear rules in data analysis hold up under company demands while still working well day to day. Where different areas overlap, balance comes from setting common scales then combining them thoughtfully. Systems built in separate parts grow easier - from early test versions into real-world use.
+
+So much rides on showing clarity in how data shapes choices inside organizations. Not just ideas float around but real tools take shape right there in the work. Proof comes alive when systems that explain themselves fit neatly within tight boundaries of time and means. What emerges isn’t just thought - it’s something you can touch, test, adjust. Hidden logic steps into daylight through design built for purpose.
+
+---
+
+LIST OF FIGURES
+
+1. Four Layer System Architecture Presentation Application Analytics Persistence
+
+2. Figure 2 Data Input Areas Leadership and People Risk and Operations Financial Performance
+
+3. Figure 3 KPI Aggregation Hierarchy Component Inputs to Principal KPIs to Organizational Health Index
+
+4. Figure 4 CEO HR Finance Operations Dashboard Views
+
+5. Figure 5 Authentication and Authorization Flow
+
+6. Figure 6 Manual Analysis Processing Pipeline
+
+7. CSV Batch Ingestion and Ranking Algorithm Figure 7
+
+8. Figure 8 Generating PDF Reports from Snapshots
+
+9. Figure 9 Database Schema Users and Analyses Tables
+
+10. Machine Learning Model Training and Prediction Flow
+
+---
+
+REFERENCES
+
+Altman, E. I. wrote a book about financial failure that came out in New York through Wiley back in 1968.
+
+Becker, Huselid, and Ulrich put forward a method connecting human resources work directly to business goals. This book came out in 2001 through Harvard Business School Press in Boston. Instead of treating HR as separate, it shows how people practices affect performance outcomes. Each piece - strategy, metrics, and organizational capabilities - fits into a bigger framework. Rather than just tracking activities, the approach measures impact on results that matter. Because alignment matters, the scorecard ties daily actions to long-term aims. While many see HR as support staff, this model positions it as strategic partner. Not every company applies it the same way, yet core principles stay consistent across settings.
+
+Pages 2652 through 2671 hold a study by Bondarouk and Brewster published in 2016. This appeared in volume 27, issue 21 of The International Journal of Human Resource Management. Their work dives into how human resource management might evolve alongside tech advances. Ideas about upcoming research paths take shape throughout the article. Instead of fixed answers, it opens questions on where HR methods could go when blended with tools and systems. Thoughts unfold slowly, focusing less on solutions, more on directions yet untried.
+
+One paper looked at how digital tools help manage people in government work. It showed systems online can shift how tasks get done inside offices. Tools on computers sometimes change who does what during hiring or training steps. Findings came from watching one public sector place try new methods. Data pointed to changes in decision power when software enters HR jobs. Some staff found routines easier once programs ran certain processes. Yet adjustments were needed whenever machines took over human roles. Observations highlighted that trust matters when shifting duties to tech platforms. Outcomes suggested planning helps teams adapt faster to system updates. Learning curves appeared steeper for older workers facing upgrades. Shifts occurred slowly even when benefits seemed clear at first glance.
+
+Cascio, W. F., along with Boudreau, J. W., explores how human resource efforts affect financial outcomes. The book, released in its second edition, came out through FT Press. Located in Upper Saddle River, the publisher brought it to print in 2011. Focus stays on measuring workforce strategies using monetary terms. Ideas unfold without leaning on vague promises or empty phrases. Each chapter builds on real data instead of theory alone. Numbers guide much of what gets discussed. Decisions rooted in people choices show clear cost links. Pages avoid fluff by sticking close to evidence. Insight comes slowly, built piece by piece. Not flashy - just steady analysis from start to finish.
+
+From Boston in 2007, a book by Davenport, T. H., alongside Harris, J. G., appeared through Harvard Business School Press. This work tackled how analytics shape success. Instead of gut feelings, numbers guide decisions here. Winners start seeing patterns others miss. Because data drives insight, strategy shifts. Not everyone adapts fast enough. Those who do pull ahead quietly.
+
+Drucker wrote this book in seventy three. The publisher was based in New York. It covers what managers do, their duties, also how they carry out work. Harper & Row released it as a full guide. Practices sit alongside responsibilities here. Tasks come up often throughout the pages. This one shaped later thinking about leading teams.
+
+From Hoboken, Wiley released a 2014 book by Fitz-enz, J. alongside Mattox, J. R., diving into how forecasting methods apply within workforce management.
+
+George, G., along with Haas, M. R., plus Pentland, A., explored big data's role in management. Their work appeared in the Academy of Management Journal during 2014. Volume 57, issue 2 holds pages 321 through 326. The study sits within a well-known academic publication. These authors examined how large-scale data impacts decision processes. Published insights came from rigorous scholarly effort. Year of release marks it early in the decade.
+
+One early piece on how computers help managers make choices comes from Gorry and Scott Morton. This work appeared in a business journal back in 1971. It laid out ways data tools support decision tasks. Pages fifty five through seventy cover their main ideas. The article sits in volume thirteen, issue one of Sloan Management Review.
+
+Page forty through fifty five in issue twenty of Deloitte Review hold a piece by Guszcza, Lewis, and Evans-Greenwood. Prediction's economic angle gets explored there alongside cognitive tech. Machine learning takes center stage throughout their work. Published during two thousand seventeen, thoughts unfold on what these tools can do.
+
+[12] ISO 31000:2018. Risk Management - Guidelines. Geneva: International Organization for Standardization, 2018.
+
+Published in 2011 by the International Organization for Standardization in Geneva, this document outlines quality models for systems and software. It forms part of the SQuaRE series, focusing on requirements and evaluation methods. Known as ISO/IEC 25010:2011, it provides a structured approach to assessing product quality. Rather than listing isolated traits, it organizes characteristics into categories that reflect real-world performance. While rooted in engineering principles, its framework applies across different types of digital solutions. Because standards evolve, later updates may build upon but not replace its core model.
+Study by Kahneman and Tverso on how people decide when facing risks. Published in Econometrica during 1979. Appeared in volume 47, issue number two. Pages range from 263 to 291. Work explores choices made under uncertain outcomes. Ideas shaped thinking about gains versus losses. Numbered fourteen in this list.
+
+[15] Kaplan, R. S.; Norton, D. P. The Balanced Scorecard: Measures that drive performance. Harvard Business Review, 70(1), 1992, pp. 71-79.
+
+One book by Keen, P. G. W., along with Scott Morton, M. S., came out back in 1978. Titled Decision Support Systems: An Organizational Perspective, it took shape under Addison-Wesley in Reading, Massachusetts. Years passed yet its presence remains noted. The work looks at how organizations handle choices using tools built around data flow. Ideas inside still echo through current thinking, even now.
+
+Published by Pearson in Harlow, the sixteenth edition of Management Information Systems comes from Laudon, K. C., alongside work by Laudon, J. P. The book handles how digital operations shape business choices. Firm management gets examined through an information systems lens here. This version appeared in 2020.
+
+On page eighteen, March and Simon wrote about organizations. The book came out in New York through Wiley. That happened back in 1958.
+
+One book by Marr, printed in London through Kogan Page during 2017, looks at handling information using large datasets alongside tools powered by artificial thinking. Instead of just collecting facts, it examines ways organizations might gain value from digital insights found across modern systems.
+
+From McAfee, A. along with Brynjolfsson, E., comes a look at big data reshaping how companies are run - published in Harvard Business Review during 2012, volume 90 number 10, pages spanning 60 through 68.
+
+Published in 2020 by the National Institute of Standards and Technology in Gaithersburg, Maryland, this document carries the number NIST SP 800-53 Rev. 5. It outlines how organizations can manage security and privacy within their information systems. Instead of broad mandates, it offers structured options for control implementation. While focused on federal standards, its influence reaches beyond government use. Each section builds on real operational needs rather than theoretical models. Because details matter here, precision shapes every recommendation. Though technical in nature, clarity remains a priority throughout.
+
+Published in 2012 by the National Institute of Standards and Technology in Gaithersburg, Maryland, this guide carries the number 800-61 Revision 2. It focuses on how to manage computer security incidents. Written under the NIST Special Publications series, it serves as a reference for handling breaches. Instead of theory, it emphasizes practical steps during response situations. While developed years ago, its structure still supports current practices. The document outlines roles, timelines, plus communication methods when systems face threats. Because digital risks evolve, teams often revisit these guidelines before updating protocols.
+
+[23] Power, D. J. A Brief History of Decision Support Systems. DSSResources.COM, version 4.0, 2007.
+
+Rothwell, W. J., outlines leadership continuity through internal talent growth in a 2010 publication by AMACOM in New York; the fourth edition of Effective Succession Planning brings insight into how organizations maintain steady progress when shifting leaders - structure matters most here, though flexibility plays its part too - experience shapes readiness much more than timelines do.
+
+That book by Simon came out again in seventy seven, a redo of an earlier version. Pages shaped into ideas about how choices get made when leading stuff. Printed far from cities where cliffs meet the sea in New Jersey. One thinker named Herbert worked it all out under a publisher's roof at Prentice Hall.
+
+One study looked at how tech changes affect HR work. This research came out in a journal during 2015. Authors involved were Stone, Deadrick, Lukaszewski, and Johnson. It appeared in volume 25, issue two of that review. Page numbers ran from 216 to 231. Technology's role shaped what comes next for managing people. Details unfolded across those pages without rushing. Ideas built slowly through careful analysis.
+
+One study by Tarafdar, Beath, and Ross explores how businesses use advanced computing systems. This work appeared in IT Professional during 2017. The article spans pages twenty-one through twenty-seven. It looks into both potential benefits and difficulties of these technologies. Volume nineteen, issue four holds the full piece. Ideas around machine-driven thinking in companies take center stage. Challenges arise alongside chances for growth. Published mid-year, it draws attention to real-world uses. Each point unfolds without leaning on exaggerated claims. Thoughtful analysis replaces bold statements throughout.
+
+---
+
+ATTACHMENTS
+
+Appendix A Input Data Structure and Checking Rules
+
+Required Fields 14 inputs
+Field Type Minimum Maximum Default Unit
+|-------|------|-----|-----|---------|------|
+One sunny morning, birds chirping nearby, workers arrived at the building early. A quiet hum filled the lobby as screens lit up slowly. People moved through hallways carrying mugs and notebooks. The name on the wall stayed unchanged, just letters in clean font. Outside, traffic rolled past without stopping. Inside, routines unfolded like clockwork every day
+On one hand, technology shows up under category. Dropdown appears next, tied to a specific field. Industry links here through selection. The word Technology fits inside quotes. A dash separates each part. Another dash follows after. Structure stays clear without extra details
+Growth shows up under category when you pick it from the list. One option among others, found by moving through selections. Not first, not last, just there. Appears after a tap, sits in place until changed. Part of the setup, but not required. Shows meaning only when chosen. Stays quiet if ignored
+Number of staff sits between one and ten thousand. A hundred workers marks the midpoint here. From solo roles up to large teams, coverage is complete. The scale stretches from tiny groups to big workforces. One person might start it all, while others grow much larger. Ten thousand represents the upper edge reached. Staff size ranges across a wide span by design.
+Leadership spans range from zero up to fifty years. Five-year intervals mark each step along the way. Time moves forward in chunks that size. No leader falls outside this timeline. Every value fits within those boundaries.
+Score shown as a number. Ranges from one to ten. Typically sits around five. Measured on a scale where one is lowest, ten highest. Value reflects digital performance plainly. Uses whole numbers only. Easy to compare across cases
+Eighty five percent sticks around. That number shows what portion stays after everything else falls away. From zero to a full hundred, this one lands near the top. Numbers like these measure how much remains when time passes. The scale runs bottom to peak, marking levels along the way. A value sits boxed within that range. Percentage terms tell the story clearly
+Fifteen percent shows up here as a number between zero and one hundred. This value tracks how much slips away, measured in full percentages. Range stays fixed from bottom at zero to top near one hundred. A figure like this often reflects loss over time, clear in scale. Measured cleanly in whole percents, nothing fractional appears.
+Half of one thing compared to another shows up here. Five is the top number allowed in this spot. Zero marks the bottom edge, nothing less accepted. Numbers live between these walls, never outside. This slot holds figures, always digits only. Debt against equity fits inside this label. One part connects to company borrowing habits.
+Score shown as a number. Ranges from zero to one hundred. Sixty means sixty percent documented. Value reflects completeness of paperwork. Higher numbers suggest more pages filled. Measured in whole digits only. Full marks need every section done. Not about quality, just amount. Zero implies nothing recorded at all. Each point stands for one percent covered.
+Score shows how much depends on one area. Ranges from zero to a hundred. Forty means nearly half relies there. Measured in percentage terms. Higher numbers suggest more focus in single spots.
+Fifteen percent shows the typical target. Negative fifty means a big loss on each sale. A full one hundred gives double revenue as profit. This number stays between those two edges. Profit percentage fits here, clearly defined by these values.
+Twenty percent yearly change. Ranges from minus fifty up to one hundred. Expressed as a percentage. Type is numeric. Measures growth over time
+Twelve counts how long until funds run out. Zero means no buffer at start. Sixty sets the outer edge of time possible. Numbers here show survival span ahead. Each step marks a month with money left. Time stretches from now into future months. Count steps forward while cash holds up
+
+CSV Upload Schema Exact Column Order Required
+
+```
+company_name,industry,stage,employee_count,leadership_years,digital_score,
+retention_pct,churn_pct,dte_ratio,doc_score,dep_score,margin_pct,growth_pct,cash_months
+```
+
+Appendix B KPI Calculation Formulas and Thresholds
+
+Normalization Functions:
+
+Every number gets adjusted to fit between zero and one hundred. The shift follows guidelines tied to its specific area. Rules shape how values line up on the range. Scaling depends on what kind of data it is. Each figure lands somewhere within that window
+
+After fifteen years, gains slow down. Before that point, each year adds twice its value to a base of fifty. The total cannot go above one hundred. Once past fifteen years, the score stays fixed at eighty. Progress bends toward a ceiling. Early effort counts more. Later time brings less extra. Numbers cap out fast. Growth shifts shape over time. Limits appear earlier than expected
+- Digital Score: f(x) = 10×x (direct linear mapping from 1-10 scale)
+- Retention: f(x) = x (already 0-100 scale)
+Churn drops when x goes up - risk climbs at the same time. A hundred minus x gives the score, so bigger x means trouble shows up more often. When numbers fall, danger fades, though few notice that shift. The link stays steady, just flipped in meaning. High values push risk into view; low ones hide it behind quiet results
+Here is how debt pressure changes with x. When x grows, the value rises straight up but never passes 100. It begins at 20, then adds 16 times whatever x is. Once it hits the top, it stays flat. The climb follows a steady line until reaching max level
+- Process Documentation: f(x) = x (already 0-100 scale)
+Most of the weight sits on one thing. That thing is x. The function just returns whatever x gives it. It stays between zero and a hundred. No extra steps happen here
+- Profit Margin: f(x) = max(0, min(100, 50 + 2×x))
+- Growth Rate: f(x) = max(0, min(100, 50 + x))
+- Cash Position: f(x) = max(0, min(100, 5×x))
+
+Risk Band Thresholds:
+
+Low Risk Moderate Risk High Risk
+|--------|----------|---------------|-----------|
+Healthy levels sit between seventy and one hundred. From fifty to sixty-nine shows room for improvement. Zero up to forty-nine means concern is high.
+Lowest range sits between sixty five and one hundred. Forty five up to sixty four follows next in line. Zero through forty four brings up the rear.
+Low score stands at zero up to thirty nine. Forty brings us into moderate range, lasting till fifty nine. High impact hits once we reach sixty and continues through a full hundred.
+Wood from managed forests sits between sixty five and one hundred. Forty five to sixty four appears next, steady but quiet. Zero up to forty four closes the row, low yet clear.
+
+Appendix C API Routes and Responses
+
+Authentication Routes:
+
+Submitting a username and password happens here through POST to /login. Dashboard appears after successful sign-in by redirection. An error shows up along with the login page if something goes wrong.
+- `GET /logout` – Clears session; redirects to login

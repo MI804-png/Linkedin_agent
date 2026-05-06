@@ -1,0 +1,82 @@
+This appendix defines routine maintenance tasks required to sustain deterministic behavior, data integrity, and operational reliability in local deployment.
+
+**I.1 Daily Operational Checklist**
+
+1. Confirm application boot without route errors.
+2. Verify login for at least one seeded role account.
+3. Run one smoke analysis and confirm KPI rendering.
+4. Export one PDF and verify file opens correctly.
+5. Check database file accessibility and write permissions.
+
+**I.2 Weekly Quality Checklist**
+
+1. Review validation notes from recent CSV uploads.
+2. Identify repeated input quality issues and update guidance.
+3. Re-run deterministic reproducibility check with fixed sample.
+4. Validate trend calculations against known historical records.
+5. Archive generated reports older than retention threshold.
+
+**I.3 Monthly Governance Checklist**
+
+1. Review KPI thresholds and weight assumptions with stakeholders.
+2. Confirm access controls remain aligned with organizational roles.
+3. Rotate demonstration credentials where required.
+4. Inspect logs for repeated failed authentication attempts.
+5. Document any model or formula changes in change register.
+
+**I.4 Incident Response Procedure (Application Level)**
+
+1. Detect anomaly (route failure, database error, inconsistent output).
+2. Capture timestamp, user role, failing route, and payload context.
+3. Isolate error path using reproducible minimal input.
+4. Validate whether issue is data, logic, or infrastructure related.
+5. Apply corrective patch and rerun regression smoke tests.
+6. Document root cause and preventive control update.
+
+**I.5 Backup and Recovery Guidance**
+
+- Backup frequency: daily for database, weekly for report archive.
+- Minimum backup set: `hr_analysis.db`, generated PDFs, configuration defaults.
+- Recovery test cadence: monthly restore simulation in separate environment.
+- Restore validation: login, analysis run, history integrity, PDF export.
+
+**I.6 Change Management Notes**
+
+- Any formula change requires before/after sample comparison on fixed test set.
+- Any schema change requires migration script and rollback note.
+- Any route change requires role-access validation matrix update.
+- Any dependency change requires locked version update in requirements.
+
+### Appendix J: Extended Validation Matrix
+
+The following matrix complements Appendix F by documenting additional stress and consistency checks performed for thesis readiness.
+
+**J.1 Data Quality Stress Cases**
+
+1. Mixed numeric/string values in CSV numeric columns
+Expected: numeric coercion attempt; invalid values defaulted with notes.
+Observed: ✓ Correct handling without crash.
+
+2. Missing company names in batch rows
+Expected: fallback naming convention applied.
+Observed: ✓ Correct (auto-assigned placeholder names).
+
+3. Extreme but valid boundary rows (all minimums / all maximums)
+Expected: bounded scores, no overflow/underflow.
+Observed: ✓ Correct with clipped values.
+
+**J.2 Security and Access Cases**
+
+1. Unauthenticated request to `/history`
+Expected: redirect to login.
+Observed: ✓ Correct.
+
+2. Direct URL access to another user's analysis id
+Expected: access denied for non-admin users.
+Observed: ✓ Correct.
+
+3. Session termination via `/logout`
+Expected: session cleared, protected pages inaccessible.
+Observed: ✓ Correct.
+
+**J.3 Consistency Cases**

@@ -1,0 +1,30 @@
+**Scenario-Based Testing Results:**
+Representative organizational scenarios were analyzed (healthy growth-stage company, scaling company with high churn, mature company with high leverage, startup with limited capital). KPI outputs differentiated these scenarios consistently:
+- Growth-stage healthy companies: OHI 72-78, SRS 35-42, LRS 65-72
+- Scaling companies with high churn: OHI 48-58, SRS 62-72, LRS 52-62
+- Mature high-leverage companies: OHI 52-65, SRS 48-58, LRS 68-75
+- Capital-constrained startups: OHI 38-48, SRS 55-68, LRS 60-70
+
+These patterns indicate system responsiveness to input variations and meaningful differentiation across risk profiles.
+
+### 5.3 Practical Application and Use Cases
+
+**Use Case 1 – Strategic Growth Planning:**
+A mid-sized technology company uses the CEO dashboard to assess readiness for market expansion. The system indicates OHI 68 (Moderate), with LRS 72 (good leadership depth) but SRS 52 (moderate scaling risk due to 18% churn and key-person dependency on two architects). Recommendations emphasize recruitment, process documentation, and dependency mitigation before aggressive expansion. Management delays aggressive hiring until churn decreases and process documentation improves.
+
+**Use Case 2 – HR Retention Planning:**
+An operations-intensive company monitors monthly HR dashboard results. Churn increases from 8% to 14% over two quarters, driving SRS from 42 to 58 and OHI from 72 to 61. The system flags escalating risk and recommends targeted retention interventions. HR team investigates department-specific attrition patterns and implements targeted compensation adjustments, returning churn to 9% within six months. OHI recovers to 71.
+
+**Use Case 3 – Financial Risk Monitoring:**
+Finance leadership reviews quarterly dashboard updates. Debt-to-equity ratio increases from 0.6 to 1.2 due to equipment financing for new facility. FSC decreases from 75 to 58, and OHI drops from 72 to 65. Management recognizes scaling constraints and adjusts growth investment timing to improve cash flow before further leverage increases.
+
+**Use Case 4 – Operations Risk Assessment:**
+Operations leadership identifies key-person dependency scores of 85 (high concentration on two process leads). System recommends process documentation improvements and cross-training initiatives. After documentation and training, dependency score decreases to 62; SRS improves from 55 to 48, and OHI increases from 58 to 66.
+
+These use cases demonstrate that the system effectively surfaces organizational risks and supports role-specific decision-making without requiring advanced analytics expertise.
+
+### 6.1 Key Findings and Contributions
+
+This thesis successfully demonstrated that transparent, auditable, and integrated decision-support systems can be implemented for organizational HR and management analytics without relying on proprietary black-box commercial platforms. The work makes contributions at three levels: methodological, architectural, and practical.
+
+**Methodological Contribution:** The thesis establishes explicit, traceable KPI formulas combining HR, operations, and financial dimensions into a unified organizational health assessment framework. By prioritizing transparency over model complexity, the work demonstrates that professional-grade analytics can maintain both interpretability and organizational relevance.

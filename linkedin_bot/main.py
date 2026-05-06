@@ -15,6 +15,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resume", action="store_true", help="Resume from saved cursor in state.json.")
     parser.add_argument("--headless", action="store_true", help="Run browser in headless mode.")
     parser.add_argument("--limit", type=int, default=None, help="Max processed jobs in this run.")
+    parser.add_argument("--apply-type", choices=["easy_apply", "all", "external_only"], default=None, help="easy_apply / all / external_only")
     parser.add_argument("--validate", action="store_true", help="Validate local setup without opening browser.")
     parser.add_argument("--network", action="store_true", help="Run LinkedIn networking campaign (connect with recruiters at big companies).")
     parser.add_argument("--interviews", action="store_true", help="Scan LinkedIn messages for interview invites and generate study guides.")
@@ -87,6 +88,9 @@ def main() -> int:
     except MissingCredentialError as exc:
         print(str(exc))
         return 2
+
+    if args.apply_type:
+        config.settings.apply_type = args.apply_type
 
     bot = LinkedInAutoApplyBot(
         config,

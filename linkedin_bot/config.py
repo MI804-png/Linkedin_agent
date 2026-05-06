@@ -81,6 +81,7 @@ class BotSettings:
         default_factory=lambda: ["Hungary", "Budapest", "Italy", "Milan", "Rome"]
     )
     workplace_type: str = "all"  # all/remote/hybrid/on_site
+    apply_type: str = "easy_apply"  # easy_apply / all / external_only
     max_applications_per_run: int = 25
     retries_per_job: int = 2
     posted_days_ago: int = 7
@@ -90,6 +91,7 @@ class BotSettings:
     max_network_per_run: int = 20   # max connection requests per networking campaign run
     random_wait_min_seconds: float = 0.5
     random_wait_max_seconds: float = 1.2
+    watch_hold_seconds: int = 0
 
 
 @dataclass
@@ -102,6 +104,8 @@ class RuntimePaths:
     browser_state_path: Path = BASE_DIR / "playwright_state.json"
     gmail_alert_links_path: Path = BASE_DIR / "priority_job_links.txt"
     study_guides_dir: Path = BASE_DIR / "study_guides"
+    # webapp user_data letters folder (user id 1 = single-user install)
+    webapp_letters_dir: Path = BASE_DIR.parent / "webapp" / "user_data" / "1" / "generated_letters"
 
 
 @dataclass

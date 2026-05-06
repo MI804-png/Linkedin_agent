@@ -1,0 +1,505 @@
+﻿Analysis Routes:
+
+On the screen, a form appears showing what you picked last time. Every field holds your previous choices by default. When loading up analysis, it remembers where you left off. Last inputs stay filled unless changed now. The page opens ready for adjustments straight away
+When you send data to `/analysis`, it handles the form. The action value - like run-analysis, import-provider, or csv-upload - decides what happens next. Each option routes the request differently behind the scenes. Processing changes based on that single field. Nothing runs until that detail is clear. Different outcomes stem from this choice alone. It shapes how the system responds every time.
+List past analyses with user and role filters
+View saved analysis by ID
+Streams PDF export for analysis by ID
+
+Dashboard Routes:
+
+Role Specific Dashboard Rendering
+
+Response Context Objects:
+
+AnalysisResult:
+```
+{
+"company_name": string,
+"analysis_id": integer,
+Timestamp follows ISO 8601 format
+14 input fields
+"kpis": {
+LRS Score Band Narrative
+srs score 0 to 100 band low moderate high narrative included
+FSC Score Band Narrative
+ohi score 0 to 100 band low moderate high narrative included
+},
+Machine Learning Prediction Probability And Confidence Ranges From Zero To One Hundred
+"suggestions": [ word, word, ... ]
+Score before: number between zero and one hundred. Change since then: anywhere from minus one hundred up to plus one hundred. Path it’s on: getting better, staying even, or wearing down.
+}
+```
+
+System Deployment and Operations
+
+Local Development Deployment:
+
+```bash
+Start by setting up a space that acts like its own separate system. Bring it to life with an activation step right after setup finishes
+Create Python Virtual Environment Named .venv
+Activate virtual environment using source .venv/bin/activate on Linux or macOS and .venv\Scripts\activate on Windows
+
+Install dependencies
+Start by typing pip install followed by -r and then the file named requirements dot txt
+
+Initialize database
+python -c "from data_store import init_db; init_db()"
+
+Start Flask server
+python app.py
+
+Access at http://127.0.0.1:5000
+```
+
+Demo Credentials:
+
+User Credentials Table
+|----------|----------|------|---------|
+admin user credentials system access
+Ceo Dashboard Access For Ceo Demo User
+Someone logs in with a code called demo123. Access goes to a section named hr_demo. The area is meant for people working in hr. Dashboard shows up after entry works correctly. Permissions are limited to specific functions only
+Finance Dashboard Access For Demo User
+Operations Dashboard Access For Demo User
+
+Production Considerations:
+
+Switch to PostgreSQL for better handling of multiple users at once
+- Implement CSRF protection on state-changing forms
+Enable TLS HTTPS Termination With Request Logging
+Rotate demo credentials and integrate LDAP or OAuth
+Add structured audit logs for auth and sensitive queries
+Document Data Retention and Deletion Policies
+Limited access speed and blocked repeated attempts
+
+Appendix E Machine Learning Model Overview
+
+Training Data Generation:
+
+1. Randomly sample 500 synthetic organizational profiles from valid input ranges
+2. Calculate fixed KPIs per profile LRS SRS FSC OHI
+3. Convert OHI scores to probabilities by dividing by 100
+4. Create Feature Vectors With Normalized Inputs Including Leadership Digital And Growth
+
+Model Architecture:
+
+scikit-learn gradient boosting regressor algorithm
+n estimators 100 learning rate 0 point 1 max depth 3
+Eight out of every ten data points go to training. The rest help test results later. A set number decides the split each time. That way, things stay consistent across runs
+Loss Function Mean Squared Error
+
+Model Performance Metrics:
+
+Train R squared approximately 0.87
+Test R squared approximately 0.84
+Mean Absolute Error MAE Approximately 8 Point 5 on Scale Zero to One Hundred
+Cross validation five fold cv r squared zero point eight three plus minus zero point zero three
+
+Feature Importance Approximate List
+1. Profit Margin (15%)
+2. Digital Score (14%)
+3. Growth Rate (12%)
+4. Retention Percentage (11%)
+5. Churn Percentage (10%)
+6. Cash Position (9%)
+7. Leadership Years (8%)
+8. Debt-to-Equity Ratio (7%)
+9. Process Documentation (7%)
+10. Key-Person Dependency (5%)
+
+Limitations:
+
+Model learns from artificial examples instead of past company results
+Without checking actual results, guesses stay untested. Real-world feedback never shapes the process. Assumptions run without correction. Measurements float free of proof. Outcomes slip beyond control. Numbers move unchecked by facts
+Feature importance shows direction not precise value
+Feature space might not capture curved relationships if the model expects straight-line splits. Sometimes shapes bend where lines can’t follow
+
+Appendix F Validation Test Cases
+
+Check first test input limits
+
+Five years back doesn’t fit here. That number falls outside what works. It sits beyond the allowed span. This value won’t be accepted. Not valid within boundaries set earlier
+Clamping applied - value set to zero. The check flagged it: leadership years now at floor level
+Observed: ✓ Correct
+
+Missing Value Substitution Test Case Two
+
+Input: profit_margin = null
+Default value applied - 15 percent used instead; margin_pct set automatically at 15
+Observed: ✓ Correct
+
+Test Case Three Deterministic Computation
+
+Same company profile submitted twice
+Expected: Byte-identical output
+Observed: ✓ Correct
+
+Role-Based Access Tested
+
+User tries to see someone else’s analysis without admin rights
+Access Denied Redirect To History
+Observed: ✓ Correct
+
+CSV Batch Test Five
+
+CSV has 50 rows including five with invalid industry codes
+Some entries go through cleanly. Others get flagged if something is off. The system keeps moving without stopping
+45 analyses correct five had validation problems
+
+Test Case 6 PDF Export Consistency
+
+Export Same Analysis Twice
+Expected: Byte-identical PDFs
+Observed: ✓ Correct
+
+---
+
+Appendix G End to End Workflow Specs by User Role
+
+This guide lays out how every person carries out their tasks step by step. It exists so anyone checking later can see both the software actions and the human steps taken along the way. From start triggers to what happens next, each path shows clear stages, how the system should react, plus what gets created when done.
+
+G 1 CEO Workflow Strategic Readiness Review
+
+Entry Conditions:
+
+CEO or Admin Role Verified
+One Company Analysis Record Stored
+Last time you checked, the dashboard held a recent KPI image. Sometimes it pulls fresh numbers on demand instead
+
+Sequence Steps:
+
+1. User opens `/dashboard/ceo`
+2. Last check pulls up the most recent review based on what the person can see - whole system view if they’re an admin
+3. KPI Panel Shows OHI LRS SRS FSC With Color Coded Risk Bands
+4. Top Interventions Shown in Strategic Block
+5. Last time's numbers sit beside today's for a clear look. A fresh check shows how things have shifted since then
+6. User Opens History Table Selects Company for Deep Dive
+7. User exports selected analysis PDF for board reporting
+
+Expected Outputs:
+
+Strategic View Including Organizational Health
+- Ranked action priorities with explanatory narratives
+Audit Ready PDF Summary for Management
+
+Control Points:
+
+Role Based Route Access
+Deterministic KPI Rendering for Reproducibility
+Dashboard and Export Match Exactly
+
+G 2 HR Workflow Retention and Leadership Stability Review
+
+Entry Conditions:
+Authenticated Role Is HR Or Admin
+Retention Rates Drop Amid Leadership Changes
+
+Sequence Steps:
+
+1. User opens `/analysis` and enters HR-focused values
+2. User runs analysis
+3. Engine validates fields and applies boundary clamping if needed
+4. LRS and SRS parts use clear formulas to calculate
+5. HR Dashboard Shows Turnover Risk Stories
+6. User weighs current trend alongside earlier entries
+7. User Saves Intervention Plan Based on Suggestions
+
+Expected Outputs:
+
+Leadership Readiness Matches Role Scope
+- Retention-driven risk exposure indicators
+Action List for People Operations Planning
+
+G 3 Finance Workflow Stability and Liquidity Review
+
+Entry Conditions:
+
+Only those with finance access qualify, otherwise admin status works too
+Money details you can check include profit space, how fast things grow, what is owed, plus available funds on hand.
+
+Sequence Steps:
+
+1. User Opens Finance Dashboard Route
+2. System processes FSC and OHI data
+3. Pressure from debt shows up clear. Cash that keeps things running gets mapped out too
+4. User reviews leverage-driven recommendation text
+5. User Exports Report for Quarterly Governance Package
+
+Expected Outputs:
+
+- Financial risk interpretation in normalized 0-100 scale
+Document how metrics relate to scores
+Finance Committee Review Artifact
+
+G 4 Operations Workflow Process and Dependency Risk Review
+
+Entry Conditions:
+
+Users with operations or admin roles are authenticated
+One detail comes first - documentation quality shows up alongside how much reliance exists on certain dependencies
+
+Sequence Steps:
+
+1. User accesses operations dashboard
+2. Process maturity and concentration shown by system
+3. Srs Contribution Shows Where Delays Happen And Key People Are Overused
+4. Recommendations emphasize cross-training and documentation actions
+5. User monitors ongoing trends after intervention
+
+Expected Outputs:
+
+Operational Risk Visibility Through Defensible Formula Traceability
+Prioritized Mitigation Guidance for Resilience Improvement
+Historical Evidence Shows Interventions Worked
+
+G Five Batch Analyst Workflow Multi Company Screening
+
+Entry Conditions:
+
+- User has valid CSV in required schema order
+Role cleared for batch review
+
+Sequence Steps:
+
+1. User Uploads CSV via Analysis Action
+2. Parser checks row format and value limits
+3. Every row runs through fixed logic
+4. Validation notes added for corrected or defaulted rows
+5. Rankings created using OHI SRS method
+6. Results Stay Visible on History Page
+
+Expected Outputs:
+
+- Ranked multi-company overview for rapid triage
+- Transparent notes for data quality anomalies
+Persistent Evidence for Repeated Comparative Analysis
+
+Appendix H Comprehensive Metric Dictionary and Interpretation Rules
+
+This section spells out every main input along with calculated scores using wording that works for auditors, those keeping systems running, plus anyone doing follow-up studies. Though written plainly, it matches how things are built. Each term appears clear enough to support checks, updates, or later analysis. Details stay close to actual code structure without drifting into theory. Anyone stepping in later can grasp what feeds the process and how results take shape.
+
+H 1 Input Fields Explained
+
+1. company_name
+Purpose: Human-readable company identifier in UI, reports, and history.
+Validation requires non empty string under 100 characters.
+Here’s how it works when tracking trends - this item sorts related points together. Grouping happens behind the scenes, shaping each story line by shared context instead of random order. Think of it like sorting notes under common themes so patterns show up more clearly later on.
+
+2. industry
+Purpose: Domain context for interpretation and comparison.
+Checking values using a set list of accepted industries. Each entry must match one option there.
+Here’s a thing - when the system hits an unknown value, it tucks it into a backup group along with a short explanation. Sometimes gaps show up; they get marked quietly, behind the scenes.
+3. stage
+Purpose Lifecycle Classification.
+Check each value by matching it to allowed phases. One step at a time, only what fits stays.
+Just so you know, it tweaks how suggestions are worded - doesn’t touch the actual scoring behind them.
+
+4. employee_count
+Purpose Organization Scale Context Dashboard Summaries.
+Integer between one and ten thousand.
+Operational Note: Primarily descriptive in current model version.
+
+5. leadership_years
+Purpose Leadership Maturity Proxy.
+Validation: Numeric range 0-50.
+After about fifteen years, changes start slowing down. A shift happens, then progress fades over time. Not much alters past that point. The effect tapers off gradually. Around one and a half decades, differences become slight.
+
+6. digital_score
+Purpose Digital Capability Readiness Indicator.
+Numbers between one and ten.
+Transform linearly to 0–100 range.
+
+7. retention_pct
+What it's for: checking how steady a group of workers stays over time.
+Validation: Numeric 0-100.
+Transformation: Direct mapping.
+
+8. churn_pct
+Purpose Measure of Pressure from Attrition.
+Validation: Numeric 0-100.
+Inverse Mapping Shows Risk Growth.
+
+9. dte_ratio
+Purpose: Leverage exposure indicator.
+Validation: Numeric 0-5.
+Pressure shifts evenly under the top layer, spreading step by step through straight-line tracking. The peak holds firm while values adjust below in sequence.
+
+10. doc_score
+Purpose Process Documentation Maturity.
+Validation: Numeric 0-100.
+Transformation: Direct mapping.
+
+11. dep_score
+Purpose Key Person Dependency Concentration.
+Validation: Numeric 0-100.
+Transformation: Direct mapping into scaling risk contribution.
+
+12. margin_pct
+Purpose: Profitability resilience.
+Validation: Numeric -50 to 100.
+Transformation Mapping Linear Range to 0–100.
+
+13. growth_pct
+Purpose: Expansion momentum.
+Number between minus fifty and one hundred.
+Out of the old setup came a new way - stretching numbers straight, then cutting off what spills past the edges.
+
+14. cash_months
+Purpose: Liquidity runway.
+Validation: Numeric 0-60.
+Score adjusted between zero and one hundred, topped off at the maximum. The range stretches fully when scaled, hitting no higher than a full mark.
+
+H2 Derived KPI Definitions
+
+1. Lrs Leadership Readiness Score
+Leadership and People Systems Sustain Change.
+Expected Usage: HR and CEO readiness reviews.
+
+2. SRS Scaling Risk Score
+Chance things might go wrong when expanding. How likely systems face strain during growth phases.
+Operations and HR Risk Monitoring Use.
+
+3. FSC Financial Stability Composite
+Even if times get tough, earnings stay stable while expansion continues without straining finances or risking cash flow.
+For tracking budgets and reviewing financial performance every three months.
+
+4. OHI Organizational Health Index
+Integrated Holistic Indicator Across All Principal Dimensions.
+Cross Functional Strategic Decision Support.
+
+H 3 Risk Band Communication Guidelines
+
+When scores stay steady, talk centers on keeping things running plus small upgrades now then.
+Mid-level results often point to fixes that matter most during a single planning phase. What shows up here tends to shape what gets adjusted next. Changes usually follow where attention lands first. Priorities shift based on what stands out now. Focus stays narrow when outcomes sit in this zone.
+Scores in high risk range prompt urgent mitigation steps.
+Same details always lead to the same story shape. When inputs match, outputs stay locked in step. A fixed profile feeds a predictable reply each time it runs. Every repeat brings another echo of earlier answers. Outcomes stick close when data points do not shift.
+
+H 4 Recommendation Prioritization Logic
+
+Out of order choices come first when the system picks what shows up. A fixed pattern decides each step without surprises. What appears follows strict rules every single time
+
+1. Lowest Performing Principal Components
+2. Largest Negative Trend Indicator If Prior Snapshot Exists
+3. Select intervention templates by role
+4. RANK INTERVENTIONS BY IMPACT AND URGENCY
+5. Prioritize tasks by impact group similar activities limit distractions schedule breaks test new tools
+
+H.5 Interpretation Guardrails
+
+KPI Values Guide Choices But Do Not Make Them.
+Check model results using real world expertise.
+Managers weigh KPIs alongside real-world observations when decisions carry serious consequences.
+ML estimate takes lower priority than fixed governance rules.
+
+Appendix I Maintenance Playbook and Operational Checklists
+Here’s what needs regular attention when running things locally. Keeping it stable means checking a few key areas often. Doing these steps helps avoid surprises later on. Sticking to them protects information accuracy over time. Consistent upkeep supports steady performance day after day. Following through ensures systems respond the way they should. Maintenance like this reduces chances of unexpected failures.
+
+Daily Operational Checklist
+
+1. Check app starts with no routing issues.
+2. Check the sign-in on a preset role profile, just one will do.
+3. Start by running a single smoke test, then check if the KPIs appear correctly. After that step clears, move forward only when results match expectations.
+4. Start by creating a single PDF export. Check that the document actually opens without issues.
+5. Verify Database File Access and Write Rights.
+
+I 2 Weekly Quality Checklist
+
+1. Checking feedback after those last file imports.
+2. Start by spotting patterns where inputs keep falling short. Then refine the instructions to match what actually shows up. When the same problems pop again and again, adjust the rules so they hit closer to reality.
+3. Run reproducibility test again using same sample.
+4. Check past numbers to test if trends add up right.
+5. Store old reports past keep time.
+
+Monthly Governance Checklist
+
+1. Check KPI limits and weighting with team members.
+2. Check that access matches current job roles.
+3. Switch out demo logins when needed.
+4. Check Logs for Multiple Failed Login Attempts.
+5. Record Model Or Formula Updates In Change Register.
+
+Incident Response Procedure Application Level
+
+1. Detect Anomaly Route Failure Database Error Inconsistent Output.
+2. Midway through, note the exact time something breaks. Who triggered it matters just as much as when. Follow the path that failed, step by step. What data was sent shapes the outcome too.
+3. Find error by simplifying input until it consistently fails.
+4. Check if problem comes from data logic or system setup.
+5. Fix the issue with a patch then run the basic checks again.
+6. Start by noting what caused the issue. Then outline how it will be stopped going forward.
+
+Backup and Recovery Guidance
+
+Every day, the database gets copied somewhere safe. Reports? Those only move once a week. Not more often than that.
+Minimum backup set includes hr_analysis.db plus generated PDFs and default configurations.
+Monthly recovery tests in isolated setup.
+Got back the ability to log in securely. Checking each step of the process now runs without errors. Past records stay accurate and unchanged through updates. Creating a PDF from results works once again.
+
+I 6 Change Management Notes
+
+Start by testing each new version against the old one using the exact same data batch. A shift in results shows impact - watch how numbers move when code updates run. Numbers behave differently once changes go live, always compare runs side-by-side. Never skip checking outputs directly after altering equations. What worked yesterday might fail today if formulas evolve without checks.
+Schema changes need migration scripts and rollback notes.
+Updating role access when routes change.
+Update locked versions when dependencies change.
+
+Appendix J Extended Validation Matrix
+
+A different set of tests fills in what Appendix F doesn’t cover, showing how solid the thesis holds up under pressure. Each check adds weight without breaking step, proving stability where it counts.
+
+J 1 Data Quality Under Stress
+
+1. Mixed Numbers and Text in CSV Number Columns
+Got a number? If not, it tried anyway. Wrong stuff turned into defaults, marked with comments. Notes tagged along where things didn’t fit.
+Check passed. System stayed up during test run. No errors seen when used properly.
+
+2. Some company names missing in batch entries
+fallback naming used.
+Got it right - system picked names by itself, no mistakes spotted.
+
+3. Extreme Valid Boundary Rows All Minimums Or All Maximums
+Most of the time results stay within limits. Overflow does not happen. Underflow is avoided too. Numbers hold steady without drifting past edges.
+Clipped figures show up right here.✓.
+
+J 2 Security and Access Scenarios
+
+1. Request to history without authentication
+Redirect to login expected.
+Observed: ✓ Correct.
+
+2. Direct link to someone else’s analysis by ID
+Got it wrong if regular users can get in. Only admins should make it through.
+Observed: ✓ Correct.
+
+3. Logout ends session
+Most likely outcome: the session gets wiped clean. After that, secure pages won’t load at all.
+Observed: ✓ Correct.
+
+J.3 Consistency Cases
+1. Ui Output Compared With Pdf Output For Same Analysis Id
+Same KPIs same story.
+Observed: ✓ Correct.
+
+2. Repeated Analysis With Unchanged Inputs
+Same main scores and suggested ranking expected.
+Observed: ✓ Correct.
+
+3. Historical Trend Calculation Using One Prior Record
+Got a proper starting point plus a clear sign-off on the OHI shift.
+Observed: ✓ Correct.
+
+J 4 Usability and Interpretation Examples
+
+1. Dashboard clarity in moderate and high risk situations
+Clear distinction between severity and urgency needed.
+Observed: ✓ Correct.
+
+2. Keep language consistent for all roles
+Role Relevant Wording With Deterministic Logic.
+Observed: ✓ Correct.
+
+3. Report completeness exported for management
+Inputs show up alongside KPIs, one after another. Recommendations follow, tagged neatly with time details. Metadata marks when things were logged. Each piece fits without extra noise.
+Observed: ✓ Correct.
+
+---
+
+Final Pages of Academic Research Paper

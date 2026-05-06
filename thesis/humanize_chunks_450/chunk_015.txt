@@ -1,0 +1,56 @@
+| Field | Type | Min | Max | Default | Unit |
+|-------|------|-----|-----|---------|------|
+| company_name | Text | - | 100 chars | "Company" | - |
+| industry | Category | - | dropdown | "Technology" | - |
+| stage | Category | - | dropdown | "Growth" | - |
+| employee_count | Numeric | 1 | 10000 | 100 | employees |
+| leadership_years | Numeric | 0 | 50 | 5 | years |
+| digital_score | Numeric | 1 | 10 | 5 | 1-10 scale |
+| retention_pct | Numeric | 0 | 100 | 85 | % |
+| churn_pct | Numeric | 0 | 100 | 15 | % |
+| dte_ratio | Numeric | 0 | 5 | 0.5 | debt/equity |
+| doc_score | Numeric | 0 | 100 | 60 | % documentation |
+| dep_score | Numeric | 0 | 100 | 40 | % dependency concentration |
+| margin_pct | Numeric | -50 | 100 | 15 | % profit margin |
+| growth_pct | Numeric | -50 | 100 | 20 | % YoY growth |
+| cash_months | Numeric | 0 | 60 | 12 | months of runway |
+
+**CSV Upload Schema (Exact Column Order Required):**
+
+```
+company_name,industry,stage,employee_count,leadership_years,digital_score,
+retention_pct,churn_pct,dte_ratio,doc_score,dep_score,margin_pct,growth_pct,cash_months
+```
+
+### Appendix B: KPI Calculation Formulas and Thresholds
+
+**Normalization Functions:**
+
+All numeric inputs normalized to 0-100 scale using domain-specific rules:
+
+- **Leadership Years:** f(x) = min(100, 50 + 2×x) for x ≤ 15; min(100, 80) for x > 15 (diminishing return after 15 years)
+- **Digital Score:** f(x) = 10×x (direct linear mapping from 1-10 scale)
+- **Retention:** f(x) = x (already 0-100 scale)
+- **Churn:** f(x) = 100 - x (inverse: higher churn = higher risk)
+- **Debt Pressure:** f(x) = min(100, 20 + 16×x) (scales linearly up to 1:1 ratio)
+- **Process Documentation:** f(x) = x (already 0-100 scale)
+- **Dependency Concentration:** f(x) = x (already 0-100 scale)
+- **Profit Margin:** f(x) = max(0, min(100, 50 + 2×x))
+- **Growth Rate:** f(x) = max(0, min(100, 50 + x))
+- **Cash Position:** f(x) = max(0, min(100, 5×x))
+
+**Risk Band Thresholds:**
+
+| Metric | Low Risk | Moderate Risk | High Risk |
+|--------|----------|---------------|-----------|
+| OHI | 70-100 | 50-69 | 0-49 |
+| LRS | 65-100 | 45-64 | 0-44 |
+| SRS | 0-39 | 40-59 | 60-100 |
+| FSC | 65-100 | 45-64 | 0-44 |
+
+### Appendix C: API Route Reference and Response Contracts
+
+**Authentication Routes:**
+
+- `POST /login` – Username and password submission; redirects to dashboard on success; returns login form with error message on failure
+- `GET /logout` – Clears session; redirects to login

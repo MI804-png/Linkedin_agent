@@ -279,6 +279,21 @@
           <div class="form-text">Filter jobs by where work happens: remote, hybrid, on-site, or all.</div>
         </div>
         <div class="col-md-4">
+          <label class="form-label fw-semibold">Application Type</label>
+          <select name="apply_type" class="form-select">
+            <option value="easy_apply" {{ "selected" if (p.apply_type or 'easy_apply') == 'easy_apply' else "" }}>
+              Easy Apply only
+            </option>
+            <option value="all" {{ "selected" if p.apply_type == 'all' else "" }}>
+              All (Easy Apply + External)
+            </option>
+            <option value="external_only" {{ "selected" if p.apply_type == 'external_only' else "" }}>
+              External only
+            </option>
+          </select>
+          <div class="form-text">Easy Apply = LinkedIn's one-click form. External = company website.</div>
+        </div>
+        <div class="col-md-4">
           <label class="form-label fw-semibold">Posted Within (days)</label>
           <input type="number" name="posted_days_ago" class="form-control"
                  value="{{ p.posted_days_ago }}" min="1" max="30">

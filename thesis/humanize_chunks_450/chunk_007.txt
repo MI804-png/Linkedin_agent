@@ -1,0 +1,72 @@
+**Frontend:**
+- HTML5 for semantic page structure
+- CSS3 for responsive layout and visual design
+- Vanilla JavaScript (no framework dependencies) for lightweight interactivity
+- Jinja2 templates (via Flask) for server-side rendering
+
+**DevOps and Reproducibility:**
+- requirements.txt for locked dependency versioning
+- .gitignore for version control hygiene
+- README.md for operational documentation
+
+The technology stack emphasizes accessibility, reproducibility, and minimal operational complexity. No external cloud services, proprietary software, or advanced frameworks are required.
+
+### 4.2 Core Modules and Responsibilities
+
+**app.py** – Flask entry point and route orchestration
+- Handles HTTP request routing for login, analysis, history, dashboard, and export
+- Manages session-based authentication and user context
+- Constructs template rendering context
+- Delegates business logic to specialized modules
+
+**analysis_engine.py** – Deterministic KPI computation
+- Input validation and boundary clamping
+- Normalization of domain-specific inputs to comparable scales
+- Weighted computation of LRS, SRS, FSC, OHI
+- Generation of qualitative risk bands and narrative recommendations
+- Independent of Flask dependencies; testable via direct Python import
+
+**ml_engine.py** – Machine learning support
+- Synthetic training data generation from KPI engine outputs
+- Gradient Boosting Regressor training and serialization
+- Prediction and confidence interval computation
+- Feature importance approximation for interpretability
+
+**data_store.py** – Persistence and data access
+- SQLite schema initialization and migration
+- User authentication query patterns
+- Analysis record insertion and retrieval
+- Role-aware filtering for history queries
+- Trend computation from historical records
+
+**reporting.py** – PDF generation pipeline
+- Analysis result aggregation from stored snapshots
+- PDF document construction with ReportLab
+- Table formatting, narrative generation, and metadata inclusion
+- Deterministic reproduction from stored analysis identifiers
+
+**section_data.py** – Thesis section content management
+- Structured data model for thesis document sections
+- Metadata for figure numbering and cross-references
+- Support for thesis PDF generation
+
+**generate_documentation.py** – Thesis PDF generation
+- Markdown parsing and conversion to PDF format
+- Page enumeration and numbering logic
+- Style application for thesis formatting compliance
+
+This modular design minimizes coupling, improves testability, and enables evolution toward more sophisticated functionality without architectural redesign.
+
+### 4.3 Functional Workflow and Data Processing Pipeline
+
+**Manual Analysis Workflow:**
+
+1. **Authentication:** User logs in with username and password; credentials validated against hashed passwords in SQLite; session token established.
+
+2. **Input Collection:** User navigates to analysis form and enters company profile data (14 numeric fields) and categorical selections (industry, stage).
+
+3. **Validation:** Input values coerced to expected types, clamped to valid ranges, and checked for completeness. Validation errors aggregated with user guidance.
+
+4. **KPI Computation:** Inputs normalized to 0-100 scales using domain-specific rules. Four principal KPIs computed deterministically using explicit formulas (Equations 1-4).
+
+5. **ML Comparison:** Synthetic feature vector constructed and passed to trained Gradient Boosting Regressor. Probability score and confidence interval generated.

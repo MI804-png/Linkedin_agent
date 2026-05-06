@@ -1,0 +1,29 @@
+1. UI output vs PDF output for same analysis id
+Expected: KPI values and narratives identical.
+Observed: ✓ Correct.
+
+2. Repeated analysis with unchanged inputs
+Expected: identical principal scores and recommendation order.
+Observed: ✓ Correct.
+
+3. Historical trend calculation with exactly one prior record
+Expected: valid baseline comparison and signed OHI delta.
+Observed: ✓ Correct.
+
+**J.4 Usability and Interpretation Cases**
+
+1. Dashboard readability at moderate and high-risk states
+Expected: clear differentiation of severity and action urgency.
+Observed: ✓ Correct.
+
+2. Recommendation language consistency across roles
+Expected: role-relevant wording with deterministic logic.
+Observed: ✓ Correct.
+
+3. Exported report completeness for managerial review
+Expected: includes inputs, KPIs, recommendations, and timestamp metadata.
+Observed: ✓ Correct.
+
+---
+
+End of Professional Thesis Document
