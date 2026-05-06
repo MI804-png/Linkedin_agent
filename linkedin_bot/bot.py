@@ -465,7 +465,7 @@ class LinkedInAutoApplyBot:
     def _is_yes_token(self, text: str) -> bool:
         t = (text or "").strip().lower()
         yes_tokens = (
-            "yes", "y", "true", "si", "sì", "ja", "oui", "sim", "evet", "igen",
+            "yes", "y", "true", "si", "s├¼", "ja", "oui", "sim", "evet", "igen",
             "available", "authorized", "eligible", "consent", "accept", "agree",
             "disponibile", "autorizzato", "eligible to work",
         )
@@ -474,7 +474,7 @@ class LinkedInAutoApplyBot:
     def _is_no_token(self, text: str) -> bool:
         t = (text or "").strip().lower()
         no_tokens = (
-            "no", "n", "false", "non", "nein", "pas", "nao", "não",
+            "no", "n", "false", "non", "nein", "pas", "nao", "n├úo",
             "not authorized", "not eligible", "none", "nessuno", "ninguno",
         )
         return any(tok == t or tok in t for tok in no_tokens)
@@ -544,7 +544,7 @@ class LinkedInAutoApplyBot:
     def _login(self, page) -> None:
         page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded")
         page.wait_for_timeout(2000)
-        # Wait for any post-load redirects to settle (LinkedIn may redirect /feed/ → /mynetwork/grow/)
+        # Wait for any post-load redirects to settle (LinkedIn may redirect /feed/ ΓåÆ /mynetwork/grow/)
         try:
             page.wait_for_load_state("networkidle", timeout=6000)
         except Exception:
@@ -553,7 +553,7 @@ class LinkedInAutoApplyBot:
         if self._is_authenticated(page):
             return
 
-        # Session expired — delete stale state file and re-login
+        # Session expired ΓÇö delete stale state file and re-login
         expired_in_headless = False
         if self.config.paths.browser_state_path.exists():
             self.config.paths.browser_state_path.unlink()
@@ -584,13 +584,13 @@ class LinkedInAutoApplyBot:
             pass
 
         page.wait_for_timeout(2000)
-        # Wait for redirect chain to complete (e.g. /login → /mynetwork/grow/ when session still valid)
+        # Wait for redirect chain to complete (e.g. /login ΓåÆ /mynetwork/grow/ when session still valid)
         try:
             page.wait_for_load_state("networkidle", timeout=6000)
         except Exception:
             pass
 
-        # User may have clicked a saved-account tile / session still active — check if already logged in
+        # User may have clicked a saved-account tile / session still active ΓÇö check if already logged in
         if self._is_authenticated(page):
             return
 
@@ -1059,7 +1059,7 @@ class LinkedInAutoApplyBot:
             search_url += f"&f_WT={wt_value}"
 
         # Retry navigation up to 3 times to handle transient network timeouts.
-        nav_timeout = 60_000  # 60 s — more forgiving than the default 30 s
+        nav_timeout = 60_000  # 60 s ΓÇö more forgiving than the default 30 s
         for _nav_attempt in range(3):
             try:
                 page.goto(search_url, wait_until="domcontentloaded", timeout=nav_timeout)
@@ -1072,7 +1072,7 @@ class LinkedInAutoApplyBot:
         self._human_pause()
         self._progressive_scroll(page, iterations=10)
 
-        # Broad anchor match — job cards use multiple link patterns across LinkedIn versions
+        # Broad anchor match ΓÇö job cards use multiple link patterns across LinkedIn versions
         try:
             page.wait_for_load_state("domcontentloaded", timeout=10000)
             anchors = page.query_selector_all("a")
@@ -1314,7 +1314,7 @@ class LinkedInAutoApplyBot:
         company: str = "",
         requirements: str = "",
     ) -> tuple[bool, str]:
-        # ── Step 1: open the Easy Apply flow ───────────────────────────────
+        # ΓöÇΓöÇ Step 1: open the Easy Apply flow ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         # Try navigating directly to the apply URL first (most reliable).
         apply_url = self._get_easy_apply_url(page)
         if apply_url:
@@ -1348,7 +1348,7 @@ class LinkedInAutoApplyBot:
                 return False, "Could not open Easy Apply"
             self._human_pause()
 
-        # ── Step 2: wait for the modal/flow to actually render ──────────────
+        # ΓöÇΓöÇ Step 2: wait for the modal/flow to actually render ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         # Use real wait_for_selector (up to 8 s) so we don't proceed on a blank page.
         MODAL_SELECTORS = [
             ".jobs-easy-apply-content",
@@ -1374,13 +1374,13 @@ class LinkedInAutoApplyBot:
             # One last check: if the Easy Apply button is gone the flow may have
             # opened as a full-page redirect; accept that too.
             if not page.query_selector("button#jobs-apply-button-id"):
-                flow_ready = True  # button consumed → assume flow is open
+                flow_ready = True  # button consumed ΓåÆ assume flow is open
 
         if not flow_ready:
             self._dismiss_apply_flow(page)
             return False, f"Easy Apply dialog did not open after clicking | URL: {page.url}"
 
-        # ── Handle Resume / Cover-letter file pickers ──────────────────────
+        # ΓöÇΓöÇ Handle Resume / Cover-letter file pickers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         # LinkedIn stores previously uploaded files as radio buttons.
         # Only upload a NEW file when there is no existing selection,
         # to avoid accumulating duplicate copies.
@@ -1487,9 +1487,9 @@ class LinkedInAutoApplyBot:
                 missing_prompts = self._collect_missing_required_prompts(page)
                 reason = f"Stuck on step {step+1}"
                 if error_texts:
-                    reason += f" — validation errors: {'; '.join(error_texts)}"
+                    reason += f" ΓÇö validation errors: {'; '.join(error_texts)}"
                 if missing_prompts:
-                    reason += f" — missing answers: {'; '.join(missing_prompts[:4])}"
+                    reason += f" ΓÇö missing answers: {'; '.join(missing_prompts[:4])}"
                 reason += f" | URL: {page.url}"
                 # Capture debug artefacts for offline diagnosis
                 ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -1527,7 +1527,7 @@ class LinkedInAutoApplyBot:
                     "[data-test-form-element-error-message], .artdeco-inline-feedback--error"
                 )
                 if not post_errors:
-                    break  # No errors — page advanced fine.
+                    break  # No errors ΓÇö page advanced fine.
 
                 # Try to fill whatever is still empty/invalid and retry click.
                 self._autofill_visible_fields(
@@ -1566,9 +1566,9 @@ class LinkedInAutoApplyBot:
                 missing_prompts = self._collect_missing_required_prompts(page)
                 reason = f"Stuck on step {step+1} (validation)"
                 if stuck_errors:
-                    reason += f" — errors: {'; '.join(stuck_errors)}"
+                    reason += f" ΓÇö errors: {'; '.join(stuck_errors)}"
                 if missing_prompts:
-                    reason += f" — unanswered: {'; '.join(missing_prompts[:4])}"
+                    reason += f" ΓÇö unanswered: {'; '.join(missing_prompts[:4])}"
                 reason += f" | URL: {page.url}"
                 ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
                 log_dir = self.config.paths.base_dir.parent.parent / "linkedin_bot" / "logs"
@@ -1787,7 +1787,7 @@ class LinkedInAutoApplyBot:
 
             value = (input_el.input_value() or "").strip()
             # Skip already-filled fields, BUT for number inputs "0" is a LinkedIn
-            # default placeholder that usually fails their own validation — refill it.
+            # default placeholder that usually fails their own validation ΓÇö refill it.
             force_fix_email = (
                 is_email_field
                 and bool(profile.email)
@@ -1856,7 +1856,7 @@ class LinkedInAutoApplyBot:
                     break
 
             # Fallback for ANY number input that was not matched above.
-            # Italian LinkedIn asks "Quanti anni ... con [Tech]?" — label contains
+            # Italian LinkedIn asks "Quanti anni ... con [Tech]?" ΓÇö label contains
             # "anni" even when technology name is not in fill_map.
             if not chosen and numeric_like_input:
                 year_kws = (
@@ -1905,7 +1905,7 @@ class LinkedInAutoApplyBot:
                     chosen = self._text_unknown_fallback(metadata)
 
             if chosen:
-                # Track Q&A for submission report — only real visible questions.
+                # Track Q&A for submission report ΓÇö only real visible questions.
                 # Skip internal/hidden field names (recaptcha, search tokens, etc.)
                 _skip_kws = ("recaptcha", "g-recaptcha", "search", "token", "csrf",
                              "hidden", "_key", "_id", "_val", "__")
@@ -1943,7 +1943,7 @@ class LinkedInAutoApplyBot:
                             input_el.focus()
                         except Exception:
                             pass
-                        # Use JS nativeInputValueSetter — fires React synthetic onChange
+                        # Use JS nativeInputValueSetter ΓÇö fires React synthetic onChange
                         set_ok = False
                         try:
                             page.evaluate("""
@@ -2120,8 +2120,8 @@ class LinkedInAutoApplyBot:
             if not pick_value:
                 # Generic yes/no fallback: if the options are clearly yes/no, pick
                 # based on whether this is a capability/availability question.
-                # For location/commute questions the user can't guarantee → pick first.
-                # For capability questions ("have you done X?") → pick yes (first option).
+                # For location/commute questions the user can't guarantee ΓåÆ pick first.
+                # For capability questions ("have you done X?") ΓåÆ pick yes (first option).
                 if len(non_empty) == 2:
                     opt_texts = [t for _, t in non_empty]
                     has_yes = any(self._is_yes_token(t) for t in opt_texts)
@@ -2473,7 +2473,7 @@ class LinkedInAutoApplyBot:
                 wants_no = self._is_no_token(inferred_answer)
 
                 yes_like = (
-                    "yes", "si", "sì", "ja", "oui", "sim", "true", "agree", "accept", "consent"
+                    "yes", "si", "s├¼", "ja", "oui", "sim", "true", "agree", "accept", "consent"
                 )
                 no_like = (
                     "no", "non", "nein", "falso", "false", "decline", "deny"
@@ -2930,7 +2930,7 @@ class LinkedInAutoApplyBot:
             pass
         return False
 
-    # ── Job requirements storage (for interview prep) ─────────────────────────
+    # ΓöÇΓöÇ Job requirements storage (for interview prep) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
     def _save_job_requirements(self, job_id: str, title: str, company: str,
                                 job_url: str, requirements: str) -> None:
@@ -2947,12 +2947,12 @@ class LinkedInAutoApplyBot:
         except Exception:
             pass
 
-    # ── Interview invite detection & study guide generation ───────────────────
+    # ΓöÇΓöÇ Interview invite detection & study guide generation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
     _INTERVIEW_KEYWORDS = (
         "interview", "schedule", "chat with", "call with", "speak with",
         "move forward", "next step", "advance your application", "review your profile",
-        "hiring team", "meet the team", "colloquio", "vorstellungsgespräch",
+        "hiring team", "meet the team", "colloquio", "vorstellungsgespr├ñch",
         "entretien", "entrevista", "congratulations", "selected",
     )
 
@@ -3126,7 +3126,7 @@ class LinkedInAutoApplyBot:
 
                     if guide:
                         guide_file = self._save_study_guide(job_id, title, company, guide)
-                        print(f"[PREP] Study guide saved → {guide_file}")
+                        print(f"[PREP] Study guide saved ΓåÆ {guide_file}")
                         results.append({"sender": sender, "title": title, "company": company, "guide_file": str(guide_file)})
                     else:
                         print(f"[PREP] Could not generate guide (Ollama unavailable?). Saving blank stub.")
@@ -3140,7 +3140,7 @@ class LinkedInAutoApplyBot:
 
         return {"invites_found": len(results), "guides": results}
 
-    # ── External ATS auto-apply ───────────────────────────────────────────────
+    # ΓöÇΓöÇ External ATS auto-apply ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     _EXTERNAL_ATS_PATTERNS: dict[str, tuple[str, ...]] = {
         "greenhouse": ("boards.greenhouse.io", "job-boards.greenhouse.io"),
         "lever":      ("jobs.lever.co",),
@@ -3198,17 +3198,17 @@ class LinkedInAutoApplyBot:
             elif ats == "teamtailor":
                 ok, note = self._fill_teamtailor(ext_page)
             elif ats in ("workday", "ashby", "smartrecruiters", "bamboohr"):
-                # Complex SPAs — fill what we can via generic helper
+                # Complex SPAs ΓÇö fill what we can via generic helper
                 ok, note = self._fill_generic_external(ext_page)
             else:
                 ok, note = self._fill_generic_external(ext_page)
         except Exception as e:
             ok, note = False, f"ATS fill error: {e}"
 
-        # Don't close the popup — leave it open so the user can review/finish
+        # Don't close the popup ΓÇö leave it open so the user can review/finish
         return ok, f"{ats}|{note}|{external_url[:80]}"
 
-    # ── Per-ATS fill helpers ──────────────────────────────────────────────────
+    # ΓöÇΓöÇ Per-ATS fill helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
     def _ats_try_fill(self, page, selector: str, value: str) -> bool:
         """Try to fill a single input on an external ATS page. Returns True if filled."""
@@ -3326,11 +3326,11 @@ class LinkedInAutoApplyBot:
         parts = p.full_name.strip().split(None, 1)
         first, last = parts[0], (parts[1] if len(parts) > 1 else "")
 
-        # Map of (lowercase keywords in label/name/placeholder) → value to fill
+        # Map of (lowercase keywords in label/name/placeholder) ΓåÆ value to fill
         fill_map: list[tuple[tuple[str, ...], str]] = [
-            (("first name", "firstname", "first_name", "nome", "vorname", "keresztnév"), first),
-            (("last name", "lastname", "last_name", "surname", "cognome", "nachname", "vezetéknév"), last),
-            (("full name", "your name", "teljes név"), p.full_name),
+            (("first name", "firstname", "first_name", "nome", "vorname", "keresztn├⌐v"), first),
+            (("last name", "lastname", "last_name", "surname", "cognome", "nachname", "vezet├⌐kn├⌐v"), last),
+            (("full name", "your name", "teljes n├⌐v"), p.full_name),
             (("email", "e-mail"), p.email),
             (("phone", "telephone", "telefono", "telefon", "mobile", "mobil"), p.phone),
             (("linkedin",), p.linkedin_url),
@@ -3549,10 +3549,10 @@ class LinkedInAutoApplyBot:
         self._persist_company_motivation_letter(title=job_title, company=company, body=letter)
         return letter
 
-    # ── Ollama AI: answer open-text job application questions ─────────────────
+    # ΓöÇΓöÇ Ollama AI: answer open-text job application questions ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     _OLLAMA_URL = "http://localhost:11434/api/generate"
     _OLLAMA_MODEL = "llama3"          # change to "mistral" or any installed model
-    _OLLAMA_TIMEOUT = 8               # seconds – kept short to avoid blocking the flow
+    _OLLAMA_TIMEOUT = 8               # seconds ΓÇô kept short to avoid blocking the flow
 
     def _ai_pick_dropdown_option(
         self,
@@ -3575,7 +3575,7 @@ class LinkedInAutoApplyBot:
         system = (
             "You are helping fill a job application form. "
             "Given a question and a numbered list of dropdown options, "
-            "reply ONLY with the number (1, 2, 3 …) of the best option for the candidate. "
+            "reply ONLY with the number (1, 2, 3 ΓÇª) of the best option for the candidate. "
             "No explanation. Just the number."
         )
         user_msg = (
@@ -3702,7 +3702,7 @@ class LinkedInAutoApplyBot:
         return actions
 
     def _ai_choose_apply_action(self, page, actions: list[dict[str, Any]], *, step: int, title: str = "", company: str = "") -> str | None:
-        """Choose next Easy Apply action using deterministic priority (no AI — saves ~12 s/step)."""
+        """Choose next Easy Apply action using deterministic priority (no AI ΓÇö saves ~12 s/step)."""
         if not actions:
             return None
 
@@ -3713,7 +3713,7 @@ class LinkedInAutoApplyBot:
                 return key
         return None
 
-        fallback_choice = None  # unreachable — kept so diff is clean
+        fallback_choice = None  # unreachable ΓÇö kept so diff is clean
         for key in preferred_order:
             if any(a.get("kind") == key for a in actions):
                 fallback_choice = key
@@ -3737,7 +3737,7 @@ class LinkedInAutoApplyBot:
 
             profile = self.config.profile
 
-            # ── Strategy 1: Message button directly on the job page ──────────
+            # ΓöÇΓöÇ Strategy 1: Message button directly on the job page ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
             # LinkedIn shows "Meet the hiring team" / "People you can reach out to"
             # with a Message button right on the job page.
             poster_name_el = page.query_selector(
@@ -3863,7 +3863,7 @@ class LinkedInAutoApplyBot:
                 except Exception as e:
                     pass  # Fall through to profile-page strategy
 
-            # ── Strategy 2: Navigate to poster's LinkedIn profile ────────────
+            # ΓöÇΓöÇ Strategy 2: Navigate to poster's LinkedIn profile ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
             poster_link = poster_name_el
             if not poster_link:
                 # Try broader selectors
@@ -4261,7 +4261,7 @@ class LinkedInAutoApplyBot:
                 timeout=timeout_ms,
             )
         except Exception:
-            pass  # No spinner found — that's fine
+            pass  # No spinner found ΓÇö that's fine
 
     def _dismiss_apply_flow(self, page) -> None:
         discard = page.query_selector("button:has-text('Discard')")
@@ -4404,7 +4404,7 @@ class LinkedInAutoApplyBot:
         with path.open("w", encoding="utf-8") as f:
             json.dump(content, f, indent=2, ensure_ascii=True)
 
-    # ── Networking campaign ────────────────────────────────────────────────
+    # ΓöÇΓöÇ Networking campaign ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
     def run_networking_campaign(self) -> dict[str, Any]:
         """Connect with recruiters / hiring managers at top tech companies.
@@ -4451,7 +4451,7 @@ class LinkedInAutoApplyBot:
         }
 
     def _do_networking(self, page, stats: dict[str, int]) -> None:
-        """Iterate over target companies × roles, send connection requests."""
+        """Iterate over target companies ├ù roles, send connection requests."""
         network_log_path = self.config.paths.base_dir / "network_sent.json"
         sent: dict[str, Any] = self._read_json(network_log_path, default={})
 
@@ -4462,7 +4462,7 @@ class LinkedInAutoApplyBot:
             if count >= max_per_run:
                 break
 
-            # ── Follow the company page ────────────────────────────────────
+            # ΓöÇΓöÇ Follow the company page ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
             follow_key = f"__follow__{company.lower()}"
             if follow_key not in sent:
                 try:
@@ -4524,7 +4524,7 @@ class LinkedInAutoApplyBot:
                 except Exception:
                     continue
 
-                # Collect result cards — LinkedIn has changed layouts several times;
+                # Collect result cards ΓÇö LinkedIn has changed layouts several times;
                 # try all known variants from newest to oldest.
                 cards = (
                     page.query_selector_all("li.reusable-search__result-container")
@@ -4580,15 +4580,15 @@ class LinkedInAutoApplyBot:
                         self._human_pause()
                     elif result is False:
                         stats["failures"] += 1
-                    # None == already connected / button absent — skip silently
+                    # None == already connected / button absent ΓÇö skip silently
 
     def _send_connection_request_on_card(self, page, card) -> bool | None:
         """Click Connect on a search-result card and confirm the modal.
 
         Returns:
-            True  — invitation sent successfully
-            False — an error occurred
-            None  — not applicable (already connected, button absent, etc.)
+            True  ΓÇö invitation sent successfully
+            False ΓÇö an error occurred
+            None  ΓÇö not applicable (already connected, button absent, etc.)
         """
         try:
             # 1. Find the Connect button directly on the card
@@ -4644,7 +4644,7 @@ class LinkedInAutoApplyBot:
                         item = page.query_selector(sel)
                         if item:
                             item.click(timeout=3000)
-                            connect_btn = True  # sentinel — modal will follow
+                            connect_btn = True  # sentinel ΓÇö modal will follow
                             break
                     except Exception:
                         pass
@@ -4673,7 +4673,7 @@ class LinkedInAutoApplyBot:
                 except Exception:
                     pass
 
-            # "How do you know X?" — dismiss; we can't auto-categorize
+            # "How do you know X?" ΓÇö dismiss; we can't auto-categorize
             for sel in [
                 "button[aria-label='Dismiss']",
                 "button[aria-label='Close']",
@@ -4687,21 +4687,21 @@ class LinkedInAutoApplyBot:
                 except Exception:
                     pass
 
-            # No modal visible — request likely sent inline (no extra step required)
+            # No modal visible ΓÇö request likely sent inline (no extra step required)
             return True
 
         except Exception:
             return False
 
-    # ── State helpers ──────────────────────────────────────────────────────
+    # ΓöÇΓöÇ State helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
     def _write_state(self) -> None:
         self._write_json(self.config.paths.state_path, self.state)
 
     def _reached_limit(self) -> bool:
         # Only count jobs that were actually actioned (submitted, dry_run, failure).
-        # "manual_required" = external ATS that couldn't auto-submit → doesn't burn a slot.
-        # "skipped" = already seen / redirected → also doesn't count.
+        # "manual_required" = external ATS that couldn't auto-submit ΓåÆ doesn't burn a slot.
+        # "skipped" = already seen / redirected ΓåÆ also doesn't count.
         processed = (
             self.stats["submitted"]
             + self.stats["dry_run"]
