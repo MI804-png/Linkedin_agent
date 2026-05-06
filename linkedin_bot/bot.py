@@ -72,6 +72,22 @@ class LinkedInAutoApplyBot:
         self._job_events: list[dict[str, Any]] = []
         self._current_report: dict = {"qa_pairs": {}, "uploaded_files": []}
         self.stop_requested: bool = False
+        self._active_browser = None
+        self._active_context = None
+
+    def request_hard_stop(self) -> None:
+        """Immediately set stop flag and close the active browser/context."""
+        self.stop_requested = True
+        try:
+            if self._active_context is not None:
+                self._active_context.close()
+        except Exception:
+            pass
+        try:
+            if self._active_browser is not None:
+                self._active_browser.close()
+        except Exception:
+            pass
 
     def _build_cv_context(self) -> str:
         """Build compact CV context for AI answers."""
