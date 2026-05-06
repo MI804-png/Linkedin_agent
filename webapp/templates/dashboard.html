@@ -2,6 +2,17 @@
 {% block title %}Dashboard – AutoApply{% endblock %}
 {% block content %}
 
+{% set stats = application_stats if application_stats is defined and application_stats else {
+  'attempted': 0,
+  'submitted': 0,
+  'failed': 0,
+  'success_probability': 0,
+  'failure_probability': 0,
+  'labels': [],
+  'submitted_series': [],
+  'failed_series': []
+} %}
+
 <div class="row align-items-center mb-4">
   <div class="col">
     <h3 class="fw-bold mb-0"><i class="bi bi-speedometer2 me-2 text-primary"></i>Dashboard</h3>
@@ -15,24 +26,111 @@
     {% else %}
       <span class="badge bg-secondary py-2 px-3 align-self-center">Auto-apply OFF</span>
     {% endif %}
-    <form method="post" action="{{ url_for('run_now') }}" id="run-now-form">
-      <button class="btn btn-primary" type="submit">
+    <form method="post" action="/run" id="run-now-form" class="d-flex gap-2">
+      <button class="btn btn-primary" type="submit" title="Run bot in background mode">
         <i class="bi bi-play-circle me-1"></i> Run Now
       </button>
     </form>
-    <form method="post" action="{{ url_for('retry_failures') }}" id="retry-form">
+    <form method="post" action="/run" id="run-watch-form" class="d-flex gap-2">
+      <input type="hidden" name="run_mode" value="watch">
+      <button class="btn btn-outline-primary" type="submit"
+              title="{% if is_render %}Watch live run progress in dashboard logs (cloud mode){% else %}Open Chrome so you can watch the bot while it runs{% endif %}">
+        <i class="bi bi-eye me-1"></i> Run and Watch
+      </button>
+    </form>
+    <form method="post" action="/retry_failures" id="retry-form">
       <button class="btn btn-outline-warning" type="submit"
         title="Clear failed jobs from history and retry them">
         <i class="bi bi-arrow-repeat me-1"></i> Retry Failures
       </button>
     </form>
-    <form method="post" action="{{ url_for('network_now') }}" id="network-form"
-          onsubmit="return confirm('Start networking campaign? The bot will send connection requests to recruiters at top companies (up to 20 per run).')">
+    <form method="post" action="/run_external_watch" id="run-external-watch-form" class="d-flex gap-2">
+      <button class="btn btn-outline-dark" type="submit"
+              title="{% if is_render %}Watch external-only job applications in live dashboard logs{% else %}Open browser and focus on external-only job websites{% endif %}">
+        <i class="bi bi-box-arrow-up-right me-1"></i> External Websites Watch
+      </button>
+    </form>
+    <form method="post" action="/network_now" id="network-form"
+          onsubmit="return confirm('Follow top international companies on LinkedIn to grow your network (up to 20 companies per run).')">
       <button class="btn btn-outline-info" type="submit"
-        title="Connect with recruiters & hiring managers at Google, Microsoft, Amazon, Meta, SAP and more">
+        {% if networking_status.running %}disabled{% endif %}
+        title="Follow Google, Microsoft, Amazon, Meta, SAP and more on LinkedIn">
         <i class="bi bi-people me-1"></i> Network with Companies
       </button>
     </form>
+  </div>
+</div>
+
+{% if is_render %}
+<div class="alert alert-secondary d-flex align-items-center mb-4" role="alert">
+  <i class="bi bi-cloud me-2"></i>
+  <div>
+    Cloud mode active: <strong>Run and Watch</strong> uses live dashboard logs and counters. Desktop browser windows are only available on local Windows runs.
+  </div>
+</div>
+{% endif %}
+
+{% if networking_status.running %}
+<div class="alert alert-info d-flex align-items-center mb-4" role="alert">
+  <i class="bi bi-hourglass-split me-2"></i>
+  <div>
+    Networking job in progress: <strong>{{ networking_status.action|capitalize }}</strong>
+    {% if networking_status.started_at %}
+      (started {{ networking_status.started_at }})
+    {% endif %}
+    . Additional clicks are blocked to avoid opening another watch window.
+  </div>
+</div>
+{% endif %}
+
+<div class="card mb-4">
+  <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-building me-1 text-info"></i> Followed Companies</span>
+    <span class="badge bg-info-subtle text-info-emphasis">{{ network_follow.total }} total</span>
+  </div>
+  <div class="card-body">
+    {% if network_follow['items'] %}
+      <div class="d-flex justify-content-end mb-3">
+        <form method="post" action="/network_unfollow"
+              onsubmit="return confirm('Unfollow all tracked companies?')">
+          <button class="btn btn-outline-danger btn-sm" type="submit"
+                  {% if networking_status.running %}disabled{% endif %}>
+            <i class="bi bi-person-dash me-1"></i> Unfollow All Tracked
+          </button>
+        </form>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Company</th>
+              <th>Followed At</th>
+              <th class="text-end">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in network_follow['items'] %}
+            <tr>
+              <td class="fw-semibold">{{ item.company }}</td>
+              <td class="small text-muted">{{ item.followed_at or 'Unknown' }}</td>
+              <td class="text-end">
+                <form method="post" action="/network_unfollow" class="d-inline"
+                      onsubmit="return confirm('Unfollow {{ item.company }}?')">
+                  <input type="hidden" name="company" value="{{ item.company }}">
+                  <button class="btn btn-outline-danger btn-sm" type="submit"
+                          {% if networking_status.running %}disabled{% endif %}>
+                    Unfollow
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="text-muted mb-0">No followed companies tracked yet.</p>
+    {% endif %}
   </div>
 </div>
 
@@ -48,6 +146,48 @@
   </div>
 </div>
 {% endif %}
+
+<!-- Platform capabilities summary -->
+<div class="card mb-4 border-0 shadow-sm">
+  <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-stars me-1 text-primary"></i> Automation Capabilities</span>
+    <span class="badge bg-primary-subtle text-primary-emphasis">Thesis Build</span>
+  </div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-lg-4">
+        <div class="border rounded p-3 h-100">
+          <div class="fw-semibold mb-2"><i class="bi bi-link-45deg me-1 text-info"></i> Application Coverage</div>
+          <ul class="small mb-0 ps-3">
+            <li>LinkedIn Easy Apply multi-step forms</li>
+            <li>External ATS support (Greenhouse, Lever, Teamtailor, Workday patterns)</li>
+            <li>Required fields, consent checkboxes, and file uploads</li>
+          </ul>
+        </div>
+      </div>
+      <div class="col-lg-4">
+        <div class="border rounded p-3 h-100">
+          <div class="fw-semibold mb-2"><i class="bi bi-cpu me-1 text-success"></i> AI + Smart Filling</div>
+          <ul class="small mb-0 ps-3">
+            <li>Ollama-powered fallback for unknown dropdowns and questions</li>
+            <li>Location-aware option picking (city/country context)</li>
+            <li>Email auto-correction prevents stale autofill values</li>
+          </ul>
+        </div>
+      </div>
+      <div class="col-lg-4">
+        <div class="border rounded p-3 h-100">
+          <div class="fw-semibold mb-2"><i class="bi bi-shield-check me-1 text-warning"></i> Reliability</div>
+          <ul class="small mb-0 ps-3">
+            <li>Latest CV selection (newest local resume file)</li>
+            <li>Viewport-adaptive scrolling (no fixed pixel dependence)</li>
+            <li>Detailed run logs, per-job reports, and retry workflow</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Generated motivation / cover letters -->
 <div class="card mb-4">
@@ -108,6 +248,55 @@
     <div class="card stat-card {% if runs and runs[0].status == 'error' %}red{% else %}blue{% endif %} p-3">
       <div class="text-muted small">Last Run Status</div>
       <div class="display-6 fw-bold text-capitalize">{{ runs[0].status if runs else '–' }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- Application success analytics -->
+<div class="card mb-4">
+  <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-graph-up-arrow me-1 text-success"></i> Application Success Analytics</span>
+    <span class="badge bg-success-subtle text-success-emphasis">{{ stats.success_probability }}% success probability</span>
+  </div>
+  <div class="card-body">
+    <div class="row g-3 align-items-stretch">
+      <div class="col-lg-4">
+        <div class="border rounded p-3 h-100">
+          <div class="small text-muted">Total Attempts</div>
+          <div class="h4 mb-3">{{ stats.attempted }}</div>
+
+          <div class="small text-muted">Succeeded (Submitted)</div>
+          <div class="fw-semibold text-success mb-2">{{ stats.submitted }}</div>
+
+          <div class="small text-muted">Failed</div>
+          <div class="fw-semibold text-danger mb-3">{{ stats.failed }}</div>
+
+          <div class="small text-muted mb-1">Success vs Failure Probability</div>
+          <div class="progress" style="height: 16px;">
+            <div class="progress-bar bg-success" role="progressbar"
+                 style="width: {{ stats.success_probability }}%"
+                 aria-valuenow="{{ stats.success_probability }}" aria-valuemin="0" aria-valuemax="100"></div>
+            <div class="progress-bar bg-danger" role="progressbar"
+                 style="width: {{ stats.failure_probability }}%"
+                 aria-valuenow="{{ stats.failure_probability }}" aria-valuemin="0" aria-valuemax="100"></div>
+          </div>
+          <div class="small mt-2">
+            <span class="text-success fw-semibold">{{ stats.success_probability }}%</span> success
+            <span class="text-muted"> | </span>
+            <span class="text-danger fw-semibold">{{ stats.failure_probability }}%</span> failed
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-8">
+        <div class="border rounded p-3 h-100">
+          <div class="small text-muted mb-2">Last {{ stats.labels|length }} Runs: Submitted vs Failed</div>
+          <canvas id="jobsOutcomeChart" height="170"></canvas>
+          {% if not stats.labels %}
+          <div class="small text-muted mt-2">Run the bot to generate graph data.</div>
+          {% endif %}
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -200,7 +389,7 @@
 
 <!-- Live Run Console (visible only when a run is active) -->
 {% for run in runs %}
-{% if run.status == 'running' %}
+{% if run.status == 'running' or run.id in active_run_ids %}
 <div class="card mb-4 border-primary" id="live-console-card">
   <div class="card-header bg-primary text-white d-flex align-items-center justify-content-between">
     <span>
@@ -213,12 +402,20 @@
       Skipped: <strong id="live-skipped">{{ run.skipped }}</strong> &nbsp;
       Failures: <strong id="live-failures">{{ run.failures }}</strong>
     </span>
-    <form method="post" action="/stop_run" class="mb-0">
-      <button type="submit" class="btn btn-sm btn-light text-danger fw-semibold border-0"
-              onclick="return confirm('Stop the bot after the current job?')">
-        <i class="bi bi-stop-circle me-1"></i>Stop
-      </button>
-    </form>
+    <div class="d-flex gap-2">
+      <form method="post" action="/stop_run" class="mb-0">
+        <button type="submit" class="btn btn-sm btn-light text-danger fw-semibold border-0"
+                onclick="return confirm('Stop the bot after the current job?')">
+          <i class="bi bi-stop-circle me-1"></i>Stop
+        </button>
+      </form>
+      <form method="post" action="/stop_run_now" class="mb-0">
+        <button type="submit" class="btn btn-sm btn-danger fw-semibold border-0"
+                onclick="return confirm('Force stop now? This will immediately abort the current browser flow.')">
+          <i class="bi bi-x-octagon me-1"></i>Force Stop
+        </button>
+      </form>
+    </div>
   </div>
   <div class="card-body p-0">
     <pre id="live-log" style="
@@ -293,6 +490,30 @@
             </tr>
             <tr class="collapse" id="report-{{ loop_idx }}">
               <td colspan="6" class="bg-light p-2">
+                {% if job.report and job.report.external_ats %}
+                <div class="mb-2">
+                  <strong class="small">🌐 External ATS Report:</strong>
+                  <div class="small mt-1">
+                    <span class="badge bg-info-subtle text-info-emphasis">ATS: {{ job.report.external_ats.ats or 'generic' }}</span>
+                    {% if job.report.external_ats.submit_confirmed %}
+                      <span class="badge bg-success-subtle text-success-emphasis">Submitted</span>
+                    {% else %}
+                      <span class="badge bg-warning-subtle text-warning-emphasis">Manual Review Needed</span>
+                    {% endif %}
+                  </div>
+                  <ul class="small mb-1 ps-3 mt-1">
+                    <li>Fields filled: {{ job.report.external_ats.fields_filled or 0 }}</li>
+                    <li>Selects filled: {{ job.report.external_ats.selects_filled or 0 }}</li>
+                    <li>Checkboxes checked: {{ job.report.external_ats.checkboxes_checked or 0 }}</li>
+                    <li>Steps attempted: {{ job.report.external_ats.steps_attempted or 0 }}</li>
+                    <li>CV uploaded: {{ 'Yes' if job.report.external_ats.cv_uploaded else 'No' }}</li>
+                  </ul>
+                  {% if job.report.external_ats.manual_takeover_reason %}
+                  <div class="small text-muted">Manual takeover reason: {{ job.report.external_ats.manual_takeover_reason }}</div>
+                  {% endif %}
+                </div>
+                {% endif %}
+
                 {% if job.report and job.report.uploaded_files %}
                 <div class="mb-2">
                   <strong class="small">📎 Uploaded Documents:</strong>
@@ -332,6 +553,134 @@
     </div>
   </div>
 </div>
+
+{% if failed_jobs %}
+<div class="row g-3 mb-4">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-exclamation-circle me-1 text-warning"></i> External / Manual Review Jobs</span>
+        <span class="badge bg-warning-subtle text-warning-emphasis">{{ failed_jobs|length }}</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>When</th>
+              <th>Job</th>
+              <th>Company</th>
+              <th>Status</th>
+              <th>Reason</th>
+              <th>ATS Report</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for job in failed_jobs %}
+            <tr>
+              <td class="small text-nowrap">{{ job.time }}</td>
+              <td class="small">
+                {% if job.job_url %}
+                  <a href="{{ job.job_url }}" target="_blank" rel="noopener">{{ job.title }}</a>
+                {% else %}
+                  {{ job.title }}
+                {% endif %}
+              </td>
+              <td class="small">{{ job.company }}</td>
+              <td class="small">
+                {% if job.status == 'manual_required' %}
+                  <span class="badge bg-warning text-dark">manual_required</span>
+                {% else %}
+                  <span class="badge bg-danger">failed</span>
+                {% endif %}
+              </td>
+              <td class="small text-muted">{{ job.note }}</td>
+              <td class="small">
+                {% if job.report and job.report.external_ats %}
+                  <div>ATS: <strong>{{ job.report.external_ats.ats or 'generic' }}</strong></div>
+                  <div>Fields: {{ job.report.external_ats.fields_filled or 0 }}, Steps: {{ job.report.external_ats.steps_attempted or 0 }}</div>
+                  {% if job.report.external_ats.manual_takeover_reason %}
+                    <div class="text-muted">{{ job.report.external_ats.manual_takeover_reason }}</div>
+                  {% endif %}
+                {% else %}
+                  <span class="text-muted">No external report</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Missing Skills Report -->
+{% if missing_skills_reports %}
+<div class="row g-3 mb-4">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-lightbulb me-1 text-warning"></i> Missing Skills (Recent Applications)</span>
+        <span class="badge bg-warning-subtle text-warning-emphasis">{{ missing_skills_reports|length }}</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>When</th>
+              <th>Company / Job</th>
+              <th>Missing Skills</th>
+              <th>Confidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for report in missing_skills_reports %}
+            {% set missing_skills = report.get_missing_skills() %}
+            <tr>
+              <td class="small text-nowrap">{{ report.applied_at.strftime('%m/%d %H:%M') }}</td>
+              <td class="small">
+                <strong>{{ report.job_title }}</strong><br>
+                <span class="text-muted">{{ report.company }}</span>
+              </td>
+              <td class="small">
+                {% if missing_skills %}
+                  <div class="d-flex flex-wrap gap-1">
+                    {% for skill in missing_skills[:5] %}
+                    <span class="badge bg-danger-subtle text-danger">{{ skill }}</span>
+                    {% endfor %}
+                    {% if missing_skills|length > 5 %}
+                    <span class="badge bg-secondary-subtle text-secondary">+{{ missing_skills|length - 5 }} more</span>
+                    {% endif %}
+                  </div>
+                {% else %}
+                  <span class="text-muted">-</span>
+                {% endif %}
+              </td>
+              <td class="small">
+                {% if report.confidence %}
+                  <div class="d-flex align-items-center gap-2">
+                    <div style="width: 60px;">
+                      <div class="progress" role="progressbar" style="height: 20px;">
+                        <div class="progress-bar {% if report.confidence >= 0.8 %}bg-success{% elif report.confidence >= 0.6 %}bg-warning{% else %}bg-danger{% endif %}" 
+                             style="width: {{ (report.confidence * 100)|int }}%"></div>
+                      </div>
+                    </div>
+                    <span>{{ (report.confidence * 100)|int }}%</span>
+                  </div>
+                {% else %}
+                  <span class="text-muted">-</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <!-- Failed run history (never cleared by retry) -->
 <div class="card mb-4">
@@ -464,6 +813,11 @@
 {% endblock %}
 
 {% block scripts %}
+{% set stats = application_stats if application_stats is defined and application_stats else {
+  'labels': [],
+  'submitted_series': [],
+  'failed_series': []
+} %}
 <script>
 function copyToken() {
   var field = document.getElementById('apiTokenField');
@@ -482,13 +836,117 @@ function copyServer() {
   });
 }
 
+function drawJobsOutcomeChart() {
+  var canvas = document.getElementById('jobsOutcomeChart');
+  if (!canvas) return;
+
+  var labels = {{ stats.labels | tojson }};
+  var submitted = {{ stats.submitted_series | tojson }};
+  var failed = {{ stats.failed_series | tojson }};
+
+  if (!labels.length) {
+    var emptyCtx = canvas.getContext('2d');
+    emptyCtx.clearRect(0, 0, canvas.width, canvas.height);
+    emptyCtx.fillStyle = '#6c757d';
+    emptyCtx.font = '14px sans-serif';
+    emptyCtx.fillText('No run data yet', 20, 30);
+    return;
+  }
+
+  var dpr = window.devicePixelRatio || 1;
+  var displayWidth = canvas.clientWidth || 600;
+  var displayHeight = 220;
+  canvas.width = Math.floor(displayWidth * dpr);
+  canvas.height = Math.floor(displayHeight * dpr);
+
+  var ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, displayWidth, displayHeight);
+
+  var maxValue = 1;
+  for (var i = 0; i < submitted.length; i++) {
+    var localMax = Math.max(submitted[i] || 0, failed[i] || 0);
+    if (localMax > maxValue) maxValue = localMax;
+  }
+
+  var padLeft = 36;
+  var padRight = 10;
+  var padTop = 14;
+  var padBottom = 36;
+  var chartWidth = displayWidth - padLeft - padRight;
+  var chartHeight = displayHeight - padTop - padBottom;
+  var groupWidth = chartWidth / labels.length;
+  var barWidth = Math.max(6, Math.min(18, groupWidth * 0.32));
+
+  ctx.strokeStyle = '#dce3ea';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padLeft, padTop);
+  ctx.lineTo(padLeft, padTop + chartHeight);
+  ctx.lineTo(padLeft + chartWidth, padTop + chartHeight);
+  ctx.stroke();
+
+  for (var y = 0; y <= 4; y++) {
+    var val = Math.round((maxValue * y) / 4);
+    var yPos = padTop + chartHeight - (chartHeight * y) / 4;
+    ctx.strokeStyle = '#edf1f5';
+    ctx.beginPath();
+    ctx.moveTo(padLeft, yPos);
+    ctx.lineTo(padLeft + chartWidth, yPos);
+    ctx.stroke();
+
+    ctx.fillStyle = '#7d8790';
+    ctx.font = '11px sans-serif';
+    ctx.fillText(String(val), 6, yPos + 3);
+  }
+
+  for (var j = 0; j < labels.length; j++) {
+    var centerX = padLeft + groupWidth * j + groupWidth / 2;
+    var submittedVal = submitted[j] || 0;
+    var failedVal = failed[j] || 0;
+    var submittedH = (submittedVal / maxValue) * chartHeight;
+    var failedH = (failedVal / maxValue) * chartHeight;
+
+    ctx.fillStyle = '#198754';
+    ctx.fillRect(centerX - barWidth - 2, padTop + chartHeight - submittedH, barWidth, submittedH);
+
+    ctx.fillStyle = '#dc3545';
+    ctx.fillRect(centerX + 2, padTop + chartHeight - failedH, barWidth, failedH);
+
+    ctx.fillStyle = '#6c757d';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(labels[j], centerX, padTop + chartHeight + 14);
+  }
+
+  ctx.textAlign = 'left';
+  ctx.font = '11px sans-serif';
+  ctx.fillStyle = '#198754';
+  ctx.fillRect(padLeft, 2, 10, 10);
+  ctx.fillStyle = '#4b5560';
+  ctx.fillText('Submitted', padLeft + 14, 11);
+
+  ctx.fillStyle = '#dc3545';
+  ctx.fillRect(padLeft + 92, 2, 10, 10);
+  ctx.fillStyle = '#4b5560';
+  ctx.fillText('Failed', padLeft + 106, 11);
+}
+
+drawJobsOutcomeChart();
+window.addEventListener('resize', drawJobsOutcomeChart);
+
 // Auto-refresh status for running runs
-var runNowForm = document.getElementById('run-now-form');
-if (runNowForm) {
-  runNowForm.addEventListener('submit', function() {
+var runForms = [
+  document.getElementById('run-now-form'),
+  document.getElementById('run-watch-form'),
+  document.getElementById('run-external-watch-form')
+].filter(Boolean);
+
+runForms.forEach(function(form) {
+  form.addEventListener('submit', function() {
     sessionStorage.setItem('runStarted', '1');
   });
-}
+});
 
 if (sessionStorage.getItem('runStarted') === '1') {
   sessionStorage.removeItem('runStarted');

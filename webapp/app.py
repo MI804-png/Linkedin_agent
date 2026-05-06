@@ -38,6 +38,7 @@ USER_DATA_FOLDER.mkdir(exist_ok=True)
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET", secrets.token_hex(32))
+app.config["TEMPLATES_AUTO_RELOAD"] = True
 PROCESS_START_UTC = datetime.utcnow()
 
 # Use PostgreSQL on Render (DATABASE_URL set automatically), else SQLite locally
@@ -150,6 +151,9 @@ class UserProfile(db.Model):
     max_applications = db.Column(db.Integer, default=25)
     posted_days_ago = db.Column(db.Integer, default=7)
 
+    # Application type filter
+    apply_type = db.Column(db.String(16), default="easy_apply")  # easy_apply / all / external_only
+
     # Bot schedule – 0/1 flag
     auto_apply_enabled = db.Column(db.Boolean, default=False)
 
@@ -160,7 +164,14 @@ class UserProfile(db.Model):
     # CV file (path relative to UPLOAD_FOLDER)
     cv_filename = db.Column(db.String(256), default="")
 
+    # Render-compatible scheduling (per-user)
+    scheduled_run_hour = db.Column(db.Integer, default=8)      # Hour (0-23) to run daily
+    scheduled_run_minute = db.Column(db.Integer, default=30)   # Minute (0-59)
+    last_scheduled_run = db.Column(db.DateTime, nullable=True)  # Last time the scheduled bot ran
+    send_missing_skills = db.Column(db.Boolean, default=True)  # Send missing skills report after run
+
     user = db.relationship("User", back_populates="profile")
+    missing_skills_reports = db.relationship("MissingSkillsReport", back_populates="user_profile", cascade="all, delete-orphan")
 
     def set_linkedin_password(self, pw: str) -> None:
         self.linkedin_password_enc = encrypt(pw) if pw else ""
@@ -198,6 +209,35 @@ class BotRun(db.Model):
     log_snippet = db.Column(db.Text, default="")
 
     user = db.relationship("User", back_populates="runs")
+
+
+class MissingSkillsReport(db.Model):
+    """Tracks missing skills identified from job postings for a user."""
+    __tablename__ = "missing_skills_reports"
+    id = db.Column(db.Integer, primary_key=True)
+    user_profile_id = db.Column(db.Integer, db.ForeignKey("user_profiles.id"), nullable=False)
+    job_id = db.Column(db.String(256), default="")  # LinkedIn job ID
+    job_title = db.Column(db.String(256), default="")
+    company = db.Column(db.String(256), default="")
+    job_url = db.Column(db.Text, default="")
+    applied_at = db.Column(db.DateTime, default=datetime.utcnow)
+    missing_skills = db.Column(db.Text, default="")  # JSON list of skill strings
+    confidence = db.Column(db.Float, default=0.0)  # 0.0-1.0, how confident the extraction is
+    
+    user_profile = db.relationship("UserProfile", back_populates="missing_skills_reports")
+
+    def get_missing_skills(self) -> list[str]:
+        """Parse JSON-encoded missing skills list."""
+        if not self.missing_skills:
+            return []
+        try:
+            return json.loads(self.missing_skills)
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    def set_missing_skills(self, skills: list[str]) -> None:
+        """Store skills as JSON."""
+        self.missing_skills = json.dumps([s.strip() for s in skills if s.strip()])
 
 
 # ─── Auth helpers ─────────────────────────────────────────────────────────────
@@ -290,7 +330,7 @@ def _load_recent_job_events(user_id: int, limit: int = 100) -> tuple[list[dict],
             continue
 
         status = (entry.get("status") or "").strip().lower()
-        if status not in {"submitted", "failed"}:
+        if status not in {"submitted", "failed", "manual_required"}:
             continue
 
         ts = (entry.get("timestamp") or "").strip()
@@ -310,6 +350,7 @@ def _load_recent_job_events(user_id: int, limit: int = 100) -> tuple[list[dict],
             "note": (entry.get("note") or "").strip() or "-",
             "job_url": (entry.get("job_url") or "").strip(),
             "job_id": (entry.get("job_id") or "").strip(),
+            "status": status,
             "report": raw_report,
         }
 
@@ -344,6 +385,15 @@ def _load_generated_letters(user_id: int, limit: int = 40) -> list[dict[str, str
     try:
         for p in sorted(letters_dir.glob("*"), key=lambda x: x.stat().st_mtime, reverse=True):
             if not p.is_file():
+                continue
+            # Skip legacy plain-text files and placeholders
+            if p.suffix.lower() == ".txt":
+                try:
+                    p.unlink()
+                except Exception:
+                    pass
+                continue
+            if p.stem.endswith("company__role") or p.name in ("company__role.pdf", "company__role.docx"):
                 continue
             files.append(
                 {
@@ -631,7 +681,22 @@ def dashboard():
     user = get_current_user()
     try:
         p = ensure_user_profile(user)
+        
+        # Check if profile has minimum required data
+        if not p.cv_filename:
+            flash("Please upload your CV in Profile first.", "warning")
+            return redirect(url_for("profile"))
+        
+        if not p.linkedin_email or not p.linkedin_password_enc:
+            flash("Please add your LinkedIn credentials in Profile first.", "warning")
+            return redirect(url_for("profile"))
+        
         runs = BotRun.query.filter_by(user_id=user.id).order_by(BotRun.started_at.desc()).limit(20).all()
+        try:
+            from bot_runner import get_active_run_ids
+            active_run_ids = get_active_run_ids()
+        except Exception:
+            active_run_ids = set()
         failed_runs = (
             BotRun.query
             .filter(BotRun.user_id == user.id, BotRun.failures > 0)
@@ -640,24 +705,71 @@ def dashboard():
             .all()
         )
         total_submitted = db.session.query(db.func.sum(BotRun.submitted)).filter_by(user_id=user.id).scalar() or 0
+        total_failed = db.session.query(db.func.sum(BotRun.failures)).filter_by(user_id=user.id).scalar() or 0
+        total_attempted = int(total_submitted) + int(total_failed)
+        success_probability = round((float(total_submitted) / float(total_attempted)) * 100.0, 1) if total_attempted else 0.0
+        failure_probability = round(100.0 - success_probability, 1) if total_attempted else 0.0
+
+        recent_for_chart = list(reversed(runs[:10]))
+        analytics_labels = [f"Run {r.id}" for r in recent_for_chart]
+        analytics_submitted = [int(r.submitted or 0) for r in recent_for_chart]
+        analytics_failed = [int(r.failures or 0) for r in recent_for_chart]
+
+        application_stats = {
+            "attempted": total_attempted,
+            "submitted": int(total_submitted),
+            "failed": int(total_failed),
+            "success_probability": success_probability,
+            "failure_probability": failure_probability,
+            "labels": analytics_labels,
+            "submitted_series": analytics_submitted,
+            "failed_series": analytics_failed,
+        }
         api_token = ensure_api_token(user)
         submitted_jobs, failed_jobs = _load_recent_job_events(user.id, limit=25)
         generated_letters = _load_generated_letters(user.id, limit=40)
+
+        try:
+            from bot_runner import get_network_follow_summary, get_networking_status
+            network_follow = get_network_follow_summary(user.id, limit=200)
+            networking_status = get_networking_status(user.id)
+        except Exception:
+            network_follow = {"total": 0, "items": []}
+            networking_status = {"running": False, "action": "", "started_at": ""}
+        
+        # Load missing skills reports (top 20 most recent)
+        try:
+            missing_skills_reports = (
+                MissingSkillsReport.query
+                .filter_by(user_profile_id=p.id)
+                .order_by(MissingSkillsReport.applied_at.desc())
+                .limit(20)
+                .all()
+            )
+        except:
+            missing_skills_reports = []
+        
         return render_template(
             "dashboard.html",
             user=user,
             p=p,
             runs=runs,
+            active_run_ids=active_run_ids,
             total_submitted=total_submitted,
             api_token=api_token,
             submitted_jobs=submitted_jobs,
             failed_jobs=failed_jobs,
             failed_runs=failed_runs,
             generated_letters=generated_letters,
+            missing_skills_reports=missing_skills_reports,
+            network_follow=network_follow,
+            networking_status=networking_status,
+            application_stats=application_stats,
+            is_render=bool(os.environ.get("RENDER")),
         )
-    except Exception:
-        app.logger.exception("Dashboard render failed for user_id=%s", session.get("user_id"))
-        flash("Dashboard failed to load. Please open Profile first, then return to Dashboard.", "warning")
+    except Exception as e:
+        app.logger.exception("Dashboard render failed for user_id=%s: %s", session.get("user_id"), str(e))
+        flash(f"Dashboard error: {str(e)[:100]}. Please check your profile and try again.", "danger")
         return redirect(url_for("profile"))
 
 
@@ -702,6 +814,8 @@ def profile():
         p.search_locations = request.form.get("search_locations", "").strip()
         workplace_type = (request.form.get("workplace_type", "all") or "all").strip().lower()
         p.workplace_type = workplace_type if workplace_type in {"all", "remote", "hybrid", "on_site"} else "all"
+        apply_type = (request.form.get("apply_type", "easy_apply") or "easy_apply").strip().lower()
+        p.apply_type = apply_type if apply_type in {"easy_apply", "all", "external_only"} else "easy_apply"
         try:
             p.max_applications = int(request.form.get("max_applications", 25))
         except ValueError:
@@ -781,6 +895,10 @@ def run_now():
     try:
         user = get_current_user()
         p = ensure_user_profile(user)
+        watch_browser = (
+            (request.form.get("watch_browser") or "").strip().lower() in {"1", "true", "yes", "on"}
+            or (request.form.get("run_mode") or "").strip().lower() == "watch"
+        )
 
         if not p.linkedin_email or not p.linkedin_password_enc:
             flash("Please set your LinkedIn credentials first.", "warning")
@@ -789,10 +907,15 @@ def run_now():
             flash("Please upload your CV first.", "warning")
             return redirect(url_for("profile"))
 
-        # Enqueue / trigger bot run in background thread
         from bot_runner import run_for_user_async
-        run_for_user_async(user.id)
-        flash("Bot run started! Check the dashboard for progress.", "info")
+        run_for_user_async(user.id, watch_browser=watch_browser)
+        if watch_browser:
+            if os.environ.get("RENDER"):
+                flash("Run and Watch started in cloud mode. Live progress appears in the dashboard log (no desktop browser window on Render).", "info")
+            else:
+                flash("Bot run started in visible mode. A Chrome window should open on this machine.", "info")
+        else:
+            flash("Bot run started in background mode. Check the dashboard for progress.", "info")
         return redirect(url_for("dashboard"))
     except Exception as exc:
         uid = session.get("user_id")
@@ -801,10 +924,38 @@ def run_now():
         return redirect(url_for("dashboard"))
 
 
+@app.post("/run_external_watch")
+@login_required
+def run_external_watch():
+    try:
+        user = get_current_user()
+        p = ensure_user_profile(user)
+
+        if not p.cv_filename:
+            flash("Please upload your CV first.", "warning")
+            return redirect(url_for("profile"))
+
+        from bot_runner import run_direct_external_for_user_async
+        ok, msg = run_direct_external_for_user_async(user.id, watch_browser=not bool(os.environ.get("RENDER")))
+        if ok:
+            if os.environ.get("RENDER"):
+                flash("External job search started in cloud mode. The bot will browse WeWorkRemotely, RemoteOK, EuropeRemoteJobs, and Jobicy with live dashboard logs.", "info")
+            else:
+                flash("External job search started. A browser window will open and browse WeWorkRemotely, RemoteOK, EuropeRemoteJobs, and Jobicy.", "info")
+        else:
+            flash(f"Could not start external job search: {msg}", "warning")
+        return redirect(url_for("dashboard"))
+    except Exception as exc:
+        uid = session.get("user_id")
+        app.logger.exception("Failed to start external watch run for user_id=%s", uid)
+        flash(f"Could not start external websites watch run: {exc}", "danger")
+        return redirect(url_for("dashboard"))
+
+
 @app.post("/network_now")
 @login_required
 def network_now():
-    """Trigger a LinkedIn networking campaign to connect with recruiters at big companies."""
+    """Follow top international companies on LinkedIn to grow connections."""
     try:
         user = get_current_user()
         p = ensure_user_profile(user)
@@ -814,12 +965,40 @@ def network_now():
             return redirect(url_for("profile"))
 
         from bot_runner import run_networking_for_user_async
-        run_networking_for_user_async(user.id)
-        flash("Networking campaign started! The bot will connect with recruiters at top companies.", "info")
+        started, message = run_networking_for_user_async(user.id, watch_browser=True)
+        flash(message, "info" if started else "warning")
         return redirect(url_for("dashboard"))
     except Exception as exc:
         app.logger.exception("Failed to start networking run for user_id=%s", session.get("user_id"))
         flash(f"Could not start networking campaign: {exc}", "danger")
+        return redirect(url_for("dashboard"))
+
+
+@app.post("/network_unfollow")
+@login_required
+def network_unfollow():
+    """Start unfollow run for one tracked company or for all tracked companies."""
+    try:
+        user = get_current_user()
+        p = ensure_user_profile(user)
+
+        if not p.linkedin_email or not p.linkedin_password_enc:
+            flash("Please set your LinkedIn credentials first.", "warning")
+            return redirect(url_for("profile"))
+
+        company = (request.form.get("company") or "").strip()
+
+        from bot_runner import run_network_unfollow_for_user_async
+        started, message = run_network_unfollow_for_user_async(
+            user.id,
+            company=company if company else None,
+            watch_browser=True,
+        )
+        flash(message, "info" if started else "warning")
+        return redirect(url_for("dashboard"))
+    except Exception as exc:
+        app.logger.exception("Failed to start unfollow run for user_id=%s", session.get("user_id"))
+        flash(f"Could not start unfollow: {exc}", "danger")
         return redirect(url_for("dashboard"))
 
 
@@ -860,6 +1039,19 @@ def stop_run():
             .order_by(BotRun.started_at.desc())
             .first()
         )
+        if not run:
+            try:
+                from bot_runner import is_run_active
+                recent_runs = (
+                    BotRun.query
+                    .filter_by(user_id=user.id)
+                    .order_by(BotRun.started_at.desc())
+                    .limit(20)
+                    .all()
+                )
+                run = next((r for r in recent_runs if is_run_active(r.id)), None)
+            except Exception:
+                run = None
         if run:
             from bot_runner import request_stop
             request_stop(run.id)
@@ -874,6 +1066,48 @@ def stop_run():
     except Exception as exc:
         app.logger.exception("Failed to stop run")
         flash(f"Could not stop run: {exc}", "danger")
+    return redirect(url_for("dashboard"))
+
+
+@app.post("/stop_run_now")
+@login_required
+def stop_run_now():
+    """Force stop the currently running bot immediately (best effort)."""
+    try:
+        user = get_current_user()
+        run = (
+            BotRun.query
+            .filter_by(user_id=user.id, status="running")
+            .order_by(BotRun.started_at.desc())
+            .first()
+        )
+        if not run:
+            try:
+                from bot_runner import is_run_active
+                recent_runs = (
+                    BotRun.query
+                    .filter_by(user_id=user.id)
+                    .order_by(BotRun.started_at.desc())
+                    .limit(20)
+                    .all()
+                )
+                run = next((r for r in recent_runs if is_run_active(r.id)), None)
+            except Exception:
+                run = None
+        if run:
+            from bot_runner import request_stop_now
+            request_stop_now(run.id)
+            run.status = "stopped"
+            run.finished_at = datetime.utcnow()
+            note = "[User requested FORCE STOP — immediate abort requested]"
+            run.log_snippet = ((run.log_snippet or "") + "\n" + note).strip()
+            db.session.commit()
+            flash("Force stop sent — browser/context close requested immediately.", "warning")
+        else:
+            flash("No active run found.", "warning")
+    except Exception as exc:
+        app.logger.exception("Failed to force stop run")
+        flash(f"Could not force stop run: {exc}", "danger")
     return redirect(url_for("dashboard"))
 
 
@@ -919,13 +1153,71 @@ def run_status(run_id: int):
         if changed:
             db.session.commit()
 
+    submitted_jobs, _failed_jobs = _load_recent_job_events(user.id, limit=10)
+
     return jsonify({
         "status": run.status,
         "submitted": run.submitted,
         "skipped": run.skipped,
         "failures": run.failures,
         "log": run.log_snippet[-2000:] if run.log_snippet else "",
+        "submitted_jobs": submitted_jobs,
     })
+
+
+@app.route("/api/cron/check_scheduled_jobs", methods=["GET", "POST"])
+def cron_check_scheduled_jobs():
+    """
+    Render-compatible cron endpoint: checks all users' scheduled run times and triggers bot runs.
+    
+    Can be called by:
+    - Render Cron Job: https://your-render-url/api/cron/check_scheduled_jobs
+    - External cron service: EasyCron, UpTimeRobot, etc.
+    
+    Secure with an API key in Authorization header:
+    Authorization: Bearer YOUR_CRON_SECRET_KEY
+    """
+    # Simple auth: check for cron token in env or header
+    cron_token = os.environ.get("CRON_SECRET_KEY", "default-insecure-key-change-me")
+    auth_header = request.headers.get("Authorization", "")
+    expected_auth = f"Bearer {cron_token}"
+    
+    if auth_header != expected_auth:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    now = datetime.utcnow()
+    current_hour = now.hour
+    current_minute = now.minute
+    
+    # Find all users whose scheduled run time is now (within the minute)
+    triggered_count = 0
+    try:
+        profiles = UserProfile.query.filter_by(auto_apply_enabled=True).all()
+        for profile in profiles:
+            # Check if scheduled time matches current time
+            if (profile.scheduled_run_hour == current_hour and 
+                profile.scheduled_run_minute == current_minute):
+                # Check if we haven't already run in the last hour (to avoid duplicate runs)
+                if profile.last_scheduled_run:
+                    time_since_last = now - profile.last_scheduled_run
+                    if time_since_last < timedelta(hours=1):
+                        continue
+                
+                # Trigger bot run for this user
+                try:
+                    from bot_runner import run_for_user_async
+                    run_id = run_for_user_async(profile.user_id)
+                    profile.last_scheduled_run = now
+                    db.session.commit()
+                    triggered_count += 1
+                    app.logger.info(f"Cron: Triggered bot run for user_id={profile.user_id}, run_id={run_id}")
+                except Exception as e:
+                    app.logger.warning(f"Cron: Failed to trigger bot for user_id={profile.user_id}: {e}")
+    except Exception as e:
+        app.logger.exception("Cron job failed")
+        return jsonify({"error": str(e), "triggered": triggered_count}), 500
+    
+    return jsonify({"status": "ok", "triggered_runs": triggered_count}), 200
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────
@@ -980,8 +1272,49 @@ def ensure_schema_updates() -> None:
 
                 db.session.execute(text("UPDATE user_profiles SET workplace_type='all' WHERE workplace_type IS NULL OR workplace_type=''"))
                 db.session.commit()
-        except Exception as exc:
-            app.logger.warning("Schema auto-update skipped: %s", exc)
+
+                # Add scheduler fields for Render-compatible scheduling
+                if "scheduled_run_hour" not in profile_cols:
+                    if dialect == "sqlite":
+                        db.session.execute(text("ALTER TABLE user_profiles ADD COLUMN scheduled_run_hour INTEGER DEFAULT 8"))
+                    elif dialect == "postgresql":
+                        db.session.execute(text("ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS scheduled_run_hour INTEGER DEFAULT 8"))
+                    db.session.commit()
+
+                if "scheduled_run_minute" not in profile_cols:
+                    if dialect == "sqlite":
+                        db.session.execute(text("ALTER TABLE user_profiles ADD COLUMN scheduled_run_minute INTEGER DEFAULT 30"))
+                    elif dialect == "postgresql":
+                        db.session.execute(text("ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS scheduled_run_minute INTEGER DEFAULT 30"))
+                    db.session.commit()
+
+                if "last_scheduled_run" not in profile_cols:
+                    if dialect == "sqlite":
+                        db.session.execute(text("ALTER TABLE user_profiles ADD COLUMN last_scheduled_run DATETIME"))
+                    elif dialect == "postgresql":
+                        db.session.execute(text("ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS last_scheduled_run DATETIME"))
+                    db.session.commit()
+
+                if "send_missing_skills" not in profile_cols:
+                    if dialect == "sqlite":
+                        db.session.execute(text("ALTER TABLE user_profiles ADD COLUMN send_missing_skills BOOLEAN DEFAULT 1"))
+                    elif dialect == "postgresql":
+                        db.session.execute(text("ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS send_missing_skills BOOLEAN DEFAULT TRUE"))
+                    db.session.commit()
+
+                if "apply_type" not in profile_cols:
+                    if dialect == "sqlite":
+                        db.session.execute(text("ALTER TABLE user_profiles ADD COLUMN apply_type VARCHAR(16) DEFAULT 'easy_apply'"))
+                    elif dialect == "postgresql":
+                        db.session.execute(text("ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS apply_type VARCHAR(16) DEFAULT 'easy_apply'"))
+                    db.session.commit()
+
+            # Ensure MissingSkillsReport table exists (created by create_all if missing)
+            if "missing_skills_reports" not in table_names:
+                db.create_all()
+
+        except Exception as e:
+            app.logger.warning(f"Schema migration failed (may already exist): {e}")
 
 
 def cleanup_stale_runs() -> None:
