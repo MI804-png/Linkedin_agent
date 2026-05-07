@@ -89,6 +89,17 @@ class LinkedInAutoApplyBot:
         except Exception:
             pass
 
+    def _log(self, msg: str) -> None:
+        """Log a message to the dashboard callback and stderr."""
+        import sys as _sys
+        print(msg, file=_sys.stderr)
+        cb = getattr(self, "_log_callback", None)
+        if callable(cb):
+            try:
+                cb(msg)
+            except Exception:
+                pass
+
     def _build_cv_context(self) -> str:
         """Build compact CV context for AI answers."""
         p = self.config.profile
@@ -257,6 +268,10 @@ class LinkedInAutoApplyBot:
 
         stem = (preferred_cv.stem.lower() if preferred_cv else "")
         fname = (preferred_cv.name.lower() if preferred_cv else "")
+        # Also match "Mikhael CV" (space) or "MikhaelCV" (no sep) when file is "Mikhael_CV.pdf"
+        stem_spaced = stem.replace("_", " ").replace("-", " ")
+        stem_nosep = stem.replace("_", "").replace("-", "")
+        stem_parts = [p for p in re.split(r"[_\-\s]+", stem) if len(p) > 2]
         best_radio = resume_radios[-1]
         best_score = -1
 
@@ -280,6 +295,12 @@ class LinkedInAutoApplyBot:
                 score += 1000
             elif stem and stem in low:
                 score += 800
+            elif stem_spaced and stem_spaced in low:
+                score += 800
+            elif stem_nosep and stem_nosep in low:
+                score += 700
+            elif stem_parts and all(p in low for p in stem_parts):
+                score += 600
 
             if score > best_score:
                 best_score = score
@@ -481,7 +502,7 @@ class LinkedInAutoApplyBot:
     def _is_yes_token(self, text: str) -> bool:
         t = (text or "").strip().lower()
         yes_tokens = (
-            "yes", "y", "true", "si", "s├¼", "ja", "oui", "sim", "evet", "igen",
+            "yes", "y", "true", "si", "sâ”œÂ¼", "ja", "oui", "sim", "evet", "igen",
             "available", "authorized", "eligible", "consent", "accept", "agree",
             "disponibile", "autorizzato", "eligible to work",
         )
@@ -490,7 +511,7 @@ class LinkedInAutoApplyBot:
     def _is_no_token(self, text: str) -> bool:
         t = (text or "").strip().lower()
         no_tokens = (
-            "no", "n", "false", "non", "nein", "pas", "nao", "n├úo",
+            "no", "n", "false", "non", "nein", "pas", "nao", "nâ”œÃºo",
             "not authorized", "not eligible", "none", "nessuno", "ninguno",
         )
         return any(tok == t or tok in t for tok in no_tokens)
@@ -560,7 +581,7 @@ class LinkedInAutoApplyBot:
     def _login(self, page) -> None:
         page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded")
         page.wait_for_timeout(2000)
-        # Wait for any post-load redirects to settle (LinkedIn may redirect /feed/ ΓåÆ /mynetwork/grow/)
+        # Wait for any post-load redirects to settle (LinkedIn may redirect /feed/ Î“Ã¥Ã† /mynetwork/grow/)
         try:
             page.wait_for_load_state("networkidle", timeout=6000)
         except Exception:
@@ -569,7 +590,7 @@ class LinkedInAutoApplyBot:
         if self._is_authenticated(page):
             return
 
-        # Session expired ΓÇö delete stale state file and re-login
+        # Session expired Î“Ã‡Ã¶ delete stale state file and re-login
         expired_in_headless = False
         if self.config.paths.browser_state_path.exists():
             self.config.paths.browser_state_path.unlink()
@@ -600,13 +621,13 @@ class LinkedInAutoApplyBot:
             pass
 
         page.wait_for_timeout(2000)
-        # Wait for redirect chain to complete (e.g. /login ΓåÆ /mynetwork/grow/ when session still valid)
+        # Wait for redirect chain to complete (e.g. /login Î“Ã¥Ã† /mynetwork/grow/ when session still valid)
         try:
             page.wait_for_load_state("networkidle", timeout=6000)
         except Exception:
             pass
 
-        # User may have clicked a saved-account tile / session still active ΓÇö check if already logged in
+        # User may have clicked a saved-account tile / session still active Î“Ã‡Ã¶ check if already logged in
         if self._is_authenticated(page):
             return
 
@@ -1075,7 +1096,7 @@ class LinkedInAutoApplyBot:
             search_url += f"&f_WT={wt_value}"
 
         # Retry navigation up to 3 times to handle transient network timeouts.
-        nav_timeout = 60_000  # 60 s ΓÇö more forgiving than the default 30 s
+        nav_timeout = 60_000  # 60 s Î“Ã‡Ã¶ more forgiving than the default 30 s
         for _nav_attempt in range(3):
             try:
                 page.goto(search_url, wait_until="domcontentloaded", timeout=nav_timeout)
@@ -1088,7 +1109,7 @@ class LinkedInAutoApplyBot:
         self._human_pause()
         self._progressive_scroll(page, iterations=10)
 
-        # Broad anchor match ΓÇö job cards use multiple link patterns across LinkedIn versions
+        # Broad anchor match Î“Ã‡Ã¶ job cards use multiple link patterns across LinkedIn versions
         try:
             page.wait_for_load_state("domcontentloaded", timeout=10000)
             anchors = page.query_selector_all("a")
@@ -1330,7 +1351,7 @@ class LinkedInAutoApplyBot:
         company: str = "",
         requirements: str = "",
     ) -> tuple[bool, str]:
-        # ΓöÇΓöÇ Step 1: open the Easy Apply flow ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+        # Î“Ã¶Ã‡Î“Ã¶Ã‡ Step 1: open the Easy Apply flow Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡
         # Try navigating directly to the apply URL first (most reliable).
         apply_url = self._get_easy_apply_url(page)
         if apply_url:
@@ -1364,7 +1385,7 @@ class LinkedInAutoApplyBot:
                 return False, "Could not open Easy Apply"
             self._human_pause()
 
-        # ΓöÇΓöÇ Step 2: wait for the modal/flow to actually render ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+        # Î“Ã¶Ã‡Î“Ã¶Ã‡ Step 2: wait for the modal/flow to actually render Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡
         # Use real wait_for_selector (up to 8 s) so we don't proceed on a blank page.
         MODAL_SELECTORS = [
             ".jobs-easy-apply-content",
@@ -1390,13 +1411,13 @@ class LinkedInAutoApplyBot:
             # One last check: if the Easy Apply button is gone the flow may have
             # opened as a full-page redirect; accept that too.
             if not page.query_selector("button#jobs-apply-button-id"):
-                flow_ready = True  # button consumed ΓåÆ assume flow is open
+                flow_ready = True  # button consumed Î“Ã¥Ã† assume flow is open
 
         if not flow_ready:
             self._dismiss_apply_flow(page)
             return False, f"Easy Apply dialog did not open after clicking | URL: {page.url}"
 
-        # ΓöÇΓöÇ Handle Resume / Cover-letter file pickers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+        # Î“Ã¶Ã‡Î“Ã¶Ã‡ Handle Resume / Cover-letter file pickers Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡
         # LinkedIn stores previously uploaded files as radio buttons.
         # Only upload a NEW file when there is no existing selection,
         # to avoid accumulating duplicate copies.
@@ -1503,9 +1524,9 @@ class LinkedInAutoApplyBot:
                 missing_prompts = self._collect_missing_required_prompts(page)
                 reason = f"Stuck on step {step+1}"
                 if error_texts:
-                    reason += f" ΓÇö validation errors: {'; '.join(error_texts)}"
+                    reason += f" Î“Ã‡Ã¶ validation errors: {'; '.join(error_texts)}"
                 if missing_prompts:
-                    reason += f" ΓÇö missing answers: {'; '.join(missing_prompts[:4])}"
+                    reason += f" Î“Ã‡Ã¶ missing answers: {'; '.join(missing_prompts[:4])}"
                 reason += f" | URL: {page.url}"
                 # Capture debug artefacts for offline diagnosis
                 ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -1543,7 +1564,7 @@ class LinkedInAutoApplyBot:
                     "[data-test-form-element-error-message], .artdeco-inline-feedback--error"
                 )
                 if not post_errors:
-                    break  # No errors ΓÇö page advanced fine.
+                    break  # No errors Î“Ã‡Ã¶ page advanced fine.
 
                 # Try to fill whatever is still empty/invalid and retry click.
                 self._autofill_visible_fields(
@@ -1582,9 +1603,9 @@ class LinkedInAutoApplyBot:
                 missing_prompts = self._collect_missing_required_prompts(page)
                 reason = f"Stuck on step {step+1} (validation)"
                 if stuck_errors:
-                    reason += f" ΓÇö errors: {'; '.join(stuck_errors)}"
+                    reason += f" Î“Ã‡Ã¶ errors: {'; '.join(stuck_errors)}"
                 if missing_prompts:
-                    reason += f" ΓÇö unanswered: {'; '.join(missing_prompts[:4])}"
+                    reason += f" Î“Ã‡Ã¶ unanswered: {'; '.join(missing_prompts[:4])}"
                 reason += f" | URL: {page.url}"
                 ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
                 log_dir = self.config.paths.base_dir.parent.parent / "linkedin_bot" / "logs"
@@ -1803,7 +1824,7 @@ class LinkedInAutoApplyBot:
 
             value = (input_el.input_value() or "").strip()
             # Skip already-filled fields, BUT for number inputs "0" is a LinkedIn
-            # default placeholder that usually fails their own validation ΓÇö refill it.
+            # default placeholder that usually fails their own validation Î“Ã‡Ã¶ refill it.
             force_fix_email = (
                 is_email_field
                 and bool(profile.email)
@@ -1872,7 +1893,7 @@ class LinkedInAutoApplyBot:
                     break
 
             # Fallback for ANY number input that was not matched above.
-            # Italian LinkedIn asks "Quanti anni ... con [Tech]?" ΓÇö label contains
+            # Italian LinkedIn asks "Quanti anni ... con [Tech]?" Î“Ã‡Ã¶ label contains
             # "anni" even when technology name is not in fill_map.
             if not chosen and numeric_like_input:
                 year_kws = (
@@ -1921,7 +1942,7 @@ class LinkedInAutoApplyBot:
                     chosen = self._text_unknown_fallback(metadata)
 
             if chosen:
-                # Track Q&A for submission report ΓÇö only real visible questions.
+                # Track Q&A for submission report Î“Ã‡Ã¶ only real visible questions.
                 # Skip internal/hidden field names (recaptcha, search tokens, etc.)
                 _skip_kws = ("recaptcha", "g-recaptcha", "search", "token", "csrf",
                              "hidden", "_key", "_id", "_val", "__")
@@ -1959,7 +1980,7 @@ class LinkedInAutoApplyBot:
                             input_el.focus()
                         except Exception:
                             pass
-                        # Use JS nativeInputValueSetter ΓÇö fires React synthetic onChange
+                        # Use JS nativeInputValueSetter Î“Ã‡Ã¶ fires React synthetic onChange
                         set_ok = False
                         try:
                             page.evaluate("""
@@ -2136,8 +2157,8 @@ class LinkedInAutoApplyBot:
             if not pick_value:
                 # Generic yes/no fallback: if the options are clearly yes/no, pick
                 # based on whether this is a capability/availability question.
-                # For location/commute questions the user can't guarantee ΓåÆ pick first.
-                # For capability questions ("have you done X?") ΓåÆ pick yes (first option).
+                # For location/commute questions the user can't guarantee Î“Ã¥Ã† pick first.
+                # For capability questions ("have you done X?") Î“Ã¥Ã† pick yes (first option).
                 if len(non_empty) == 2:
                     opt_texts = [t for _, t in non_empty]
                     has_yes = any(self._is_yes_token(t) for t in opt_texts)
@@ -2489,7 +2510,7 @@ class LinkedInAutoApplyBot:
                 wants_no = self._is_no_token(inferred_answer)
 
                 yes_like = (
-                    "yes", "si", "s├¼", "ja", "oui", "sim", "true", "agree", "accept", "consent"
+                    "yes", "si", "sâ”œÂ¼", "ja", "oui", "sim", "true", "agree", "accept", "consent"
                 )
                 no_like = (
                     "no", "non", "nein", "falso", "false", "decline", "deny"
@@ -2946,7 +2967,7 @@ class LinkedInAutoApplyBot:
             pass
         return False
 
-    # ΓöÇΓöÇ Job requirements storage (for interview prep) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # Î“Ã¶Ã‡Î“Ã¶Ã‡ Job requirements storage (for interview prep) Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡
 
     def _save_job_requirements(self, job_id: str, title: str, company: str,
                                 job_url: str, requirements: str) -> None:
@@ -2963,12 +2984,12 @@ class LinkedInAutoApplyBot:
         except Exception:
             pass
 
-    # ΓöÇΓöÇ Interview invite detection & study guide generation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # Î“Ã¶Ã‡Î“Ã¶Ã‡ Interview invite detection & study guide generation Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡
 
     _INTERVIEW_KEYWORDS = (
         "interview", "schedule", "chat with", "call with", "speak with",
         "move forward", "next step", "advance your application", "review your profile",
-        "hiring team", "meet the team", "colloquio", "vorstellungsgespr├ñch",
+        "hiring team", "meet the team", "colloquio", "vorstellungsgesprâ”œÃ±ch",
         "entretien", "entrevista", "congratulations", "selected",
     )
 
@@ -3142,7 +3163,7 @@ class LinkedInAutoApplyBot:
 
                     if guide:
                         guide_file = self._save_study_guide(job_id, title, company, guide)
-                        print(f"[PREP] Study guide saved ΓåÆ {guide_file}")
+                        print(f"[PREP] Study guide saved Î“Ã¥Ã† {guide_file}")
                         results.append({"sender": sender, "title": title, "company": company, "guide_file": str(guide_file)})
                     else:
                         print(f"[PREP] Could not generate guide (Ollama unavailable?). Saving blank stub.")
@@ -3156,7 +3177,7 @@ class LinkedInAutoApplyBot:
 
         return {"invites_found": len(results), "guides": results}
 
-    # ΓöÇΓöÇ External ATS auto-apply ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # Î“Ã¶Ã‡Î“Ã¶Ã‡ External ATS auto-apply Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡
     _EXTERNAL_ATS_PATTERNS: dict[str, tuple[str, ...]] = {
         "greenhouse": ("boards.greenhouse.io", "job-boards.greenhouse.io"),
         "lever":      ("jobs.lever.co",),
@@ -3174,6 +3195,235 @@ class LinkedInAutoApplyBot:
                 return ats_name
         return "generic"
 
+    def _detect_external_page_error(self, page, url: str) -> str | None:
+        """Return a description string when the external page is an error page.
+        Returns None when the page looks healthy."""
+        try:
+            broken_domains = {"aiok.co", "asyncok.com", "producthunt.com"}
+            title = (page.title() or "").lower()
+            error_titles = (
+                "not found", "404", "page not found", "job not found",
+                "position not found", "this job is no longer available",
+                "job expired", "listing expired", "no longer accepting",
+                "500", "server error", "internal server error",
+                "403", "forbidden", "access denied", "410", "gone",
+                "this site can't be reached", "dns_probe", "err_name_not_resolved",
+                "just a moment", "checking your browser", "security verification"
+            )
+            for t in error_titles:
+                if t in title:
+                    return f"External page error ({t!r} in title): {url[:80]}"
+            error_phrases = [
+                ("text=/this job is no longer available/i", "Job listing no longer available"),
+                ("text=/this position has been filled/i", "Position already filled"),
+                ("text=/this posting has expired/i", "Job posting expired"),
+                ("text=/job listing not found/i", "Job listing not found"),
+                ("text=/page not found/i", "Page not found on external site"),
+                ("text=/404/", "External site returned 404"),
+                ("text=/we couldn't find that page/i", "Page not found on external site"),
+                ("text=/no longer accepting applications/i", "No longer accepting applications"),
+                ("text=/application period has closed/i", "Application period closed"),
+                ("text=/this site can't be reached/i", "External site unreachable"),
+                ("text=/dns address could not be found/i", "External DNS lookup failed"),
+                ("text=/server ip address could not be found/i", "External DNS lookup failed"),
+                ("text=/err_name_not_resolved/i", "External URL hostname does not resolve"),
+                ("text=/dns_probe/i", "External DNS probe error"),
+                ("text=/performing security verification/i", "External site is blocked by anti-bot verification"),
+                ("text=/checking your browser before accessing/i", "External site is blocked by anti-bot verification"),
+                ("text=/just a moment/i", "External site is blocked by anti-bot verification"),
+                ("text=/cloudflare/i", "External site is blocked by anti-bot verification"),
+            ]
+            for selector, reason in error_phrases:
+                try:
+                    if page.locator(selector).first.is_visible(timeout=800):
+                        return f"{reason}: {url[:80]}"
+                except Exception:
+                    continue
+            url_low = url.lower()
+            if any(x in url_low for x in ("/404", "/not-found", "/error", "/expired")):
+                return f"External URL indicates error page: {url[:80]}"
+            try:
+                host = url_low.split("/")[2]
+            except Exception:
+                host = ""
+            if host and any(host == d or host.endswith(f".{d}") for d in broken_domains):
+                return f"External redirect domain is unreachable ({host})"
+        except Exception:
+            pass
+        return None
+
+    def _detect_external_account_wall(self, page) -> str | None:
+        """Return a reason when the page is blocked behind auth/verification."""
+        hard_checks = [
+            ("text=/verify your email|check your inbox|enter verification code|one-time code|otp/i", "External site requires email or OTP verification"),
+            ("text=/captcha|i am not a robot|recaptcha|cloudflare/i", "External site requires CAPTCHA verification"),
+            ("text=/create account to apply|register to apply|sign up to apply/i", "External site requires account registration before applying"),
+            ("text=/sign in to apply|log in to apply|login to apply|continue to application/i", "External site requires login before applying"),
+            ("text=/sign up for free|sign up to apply to all|sign up to continue|sign up and apply/i", "signup_wall"),
+        ]
+        for selector, reason in hard_checks:
+            try:
+                if page.locator(selector).first.is_visible(timeout=1000):
+                    return reason
+            except Exception:
+                continue
+        try:
+            password_input = page.query_selector("input[type='password']")
+            if password_input and password_input.is_visible():
+                body = (page.locator("body").inner_text(timeout=1200) or "").lower()
+                if any(k in body for k in ["apply", "application", "continue", "sign in", "log in"]):
+                    return "External site shows an account password form before application"
+        except Exception:
+            pass
+        return None
+
+    def _try_external_signup(self, page) -> tuple[bool, str]:
+        """Attempt to register/sign-up on sites that show email-only sign-up forms."""
+        email_value = (self.config.profile.email or "").strip()
+        if not email_value:
+            return False, "No email configured for external sign-up"
+        try:
+            email_el = None
+            for sel in ["input[type='email']", "input[name*='email' i]", "input[id*='email' i]"]:
+                try:
+                    el = page.locator(sel).first
+                    if el.is_visible(timeout=800):
+                        email_el = el
+                        break
+                except Exception:
+                    continue
+            if not email_el:
+                return False, "No email input found for sign-up"
+            self._ats_human_fill_element(email_el, email_value, page=page)
+            self._human_pause(0.2, 0.5)
+            for cb_sel in [
+                "input[type='checkbox'][name*='terms' i]",
+                "input[type='checkbox'][name*='agree' i]",
+                "input[type='checkbox']",
+            ]:
+                try:
+                    cb = page.query_selector(cb_sel)
+                    if cb and cb.is_visible() and not cb.is_checked():
+                        cb.check(timeout=2000)
+                        self._human_pause(0.1, 0.3)
+                        break
+                except Exception:
+                    continue
+            for btn_sel in [
+                "button:has-text('Sign up')",
+                "button:has-text('Sign Up')",
+                "button:has-text('Register')",
+                "button:has-text('Create account')",
+                "button[type='submit']",
+                "input[type='submit']",
+            ]:
+                try:
+                    btn = page.locator(btn_sel).first
+                    if btn.is_visible(timeout=800):
+                        btn.click(timeout=2500)
+                        try:
+                            page.wait_for_load_state("domcontentloaded", timeout=8000)
+                        except Exception:
+                            pass
+                        self._human_reading_pause(0.8, 1.5)
+                        return True, f"Sign-up form submitted (may require email confirmation)"
+                except Exception:
+                    continue
+            return False, "Sign-up button not found or not clickable"
+        except Exception as exc:
+            return False, f"Sign-up attempt failed: {exc}"
+
+    def _try_external_login(self, page) -> tuple[bool, str]:
+        """Attempt a best-effort login on external ATS pages using configured credentials."""
+        email_value = (self.config.profile.email or "").strip()
+        password_value = (self.config.password or "").strip()
+        if not email_value or not password_value:
+            return False, "Missing credentials for external login attempt"
+
+        email_selectors = [
+            "input[type='email']",
+            "input[name*='email' i]",
+            "input[id*='email' i]",
+            "input[name*='user' i]",
+            "input[name*='login' i]",
+        ]
+        pass_selectors = [
+            "input[type='password']",
+            "input[name*='password' i]",
+            "input[id*='password' i]",
+        ]
+        submit_selectors = [
+            "button[type='submit']",
+            "input[type='submit']",
+            "button:has-text('Sign in')",
+            "button:has-text('Log in')",
+            "button:has-text('Continue')",
+        ]
+
+        email_el = None
+        pass_el = None
+        for sel in email_selectors:
+            try:
+                el = page.locator(sel).first
+                if el.is_visible(timeout=1000):
+                    email_el = el
+                    break
+            except Exception:
+                continue
+        for sel in pass_selectors:
+            try:
+                el = page.locator(sel).first
+                if el.is_visible(timeout=1000):
+                    pass_el = el
+                    break
+            except Exception:
+                continue
+
+        if not email_el or not pass_el:
+            return False, "No visible login form fields detected"
+
+        try:
+            self._ats_human_fill_element(email_el, email_value, page=page)
+            self._human_pause(0.2, 0.4)
+            self._ats_human_fill_element(pass_el, password_value, page=page)
+
+            clicked = False
+            for sel in submit_selectors:
+                try:
+                    btn = page.locator(sel).first
+                    if btn.is_visible(timeout=900):
+                        self._human_move_mouse_to(page, btn)
+                        self._human_pause(0.1, 0.25)
+                        btn.click(timeout=2500)
+                        clicked = True
+                        break
+                except Exception:
+                    continue
+            if not clicked:
+                try:
+                    pass_el.press("Enter")
+                    clicked = True
+                except Exception:
+                    pass
+            if not clicked:
+                return False, "Login form found, but no submit action available"
+
+            try:
+                page.wait_for_load_state("domcontentloaded", timeout=8000)
+            except Exception:
+                pass
+            self._human_reading_pause(0.6, 1.4)
+
+            try:
+                still_pass = page.locator("input[type='password']").first
+                if still_pass.is_visible(timeout=1200):
+                    return False, "Credentials rejected or extra verification required"
+            except Exception:
+                pass
+
+            return True, "External login submitted"
+        except Exception as exc:
+            return False, f"External login attempt failed: {exc}"
     def _apply_on_external_site(self, linkedin_page) -> tuple[bool, str]:
         """Open external ATS URL, fill the form with profile data, and submit.
         Returns (success, note). Keeps the page open if it can't submit so the
@@ -3214,17 +3464,17 @@ class LinkedInAutoApplyBot:
             elif ats == "teamtailor":
                 ok, note = self._fill_teamtailor(ext_page)
             elif ats in ("workday", "ashby", "smartrecruiters", "bamboohr"):
-                # Complex SPAs ΓÇö fill what we can via generic helper
-                ok, note = self._fill_generic_external(ext_page)
+                # Complex SPAs Î“Ã‡Ã¶ fill what we can via generic helper
+                ok, note = self._fill_ats_dispatch(ext_page)
             else:
-                ok, note = self._fill_generic_external(ext_page)
+                ok, note = self._fill_ats_dispatch(ext_page)
         except Exception as e:
             ok, note = False, f"ATS fill error: {e}"
 
-        # Don't close the popup ΓÇö leave it open so the user can review/finish
+        # Don't close the popup Î“Ã‡Ã¶ leave it open so the user can review/finish
         return ok, f"{ats}|{note}|{external_url[:80]}"
 
-    # ΓöÇΓöÇ Per-ATS fill helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # Î“Ã¶Ã‡Î“Ã¶Ã‡ Per-ATS fill helpers Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡
 
     def _ats_try_fill(self, page, selector: str, value: str) -> bool:
         """Try to fill a single input on an external ATS page. Returns True if filled."""
@@ -3336,17 +3586,453 @@ class LinkedInAutoApplyBot:
         ok = self._ats_submit(page)
         return ok, ("Teamtailor submitted" if ok else "Teamtailor submit failed")
 
+
+    # ── Per-ATS dedicated adapters ──────────────────────────────────────────
+
+    def _ats_navigate_to_apply_form(self, page) -> None:
+        """On job-listing pages, click the Apply button to open the actual form."""
+        for sel in [
+            "a:has-text('Apply for this Job')",
+            "a:has-text('Apply Now')",
+            "a:has-text('Apply')",
+            "button:has-text('Apply for this Job')",
+            "button:has-text('Apply Now')",
+            "a[href*='/apply']",
+            "#apply-btn",
+            ".apply-button",
+        ]:
+            try:
+                el = page.query_selector(sel)
+                if el and el.is_visible():
+                    el.click()
+                    page.wait_for_load_state("domcontentloaded", timeout=8000)
+                    self._human_reading_pause(0.8, 1.6)
+                    return
+            except Exception:
+                continue
+
+    def _fill_ats_greenhouse(self, page) -> tuple[bool, str]:
+        """Greenhouse ATS (boards.greenhouse.io). Navigate to apply form then fill."""
+        p = self.config.profile
+        parts = p.full_name.strip().split(None, 1)
+        first, last = parts[0], (parts[1] if len(parts) > 1 else "")
+
+        # If we're on the job listing, navigate to the apply form
+        if not page.query_selector("#first_name, input[id='first_name']"):
+            self._ats_navigate_to_apply_form(page)
+
+        filled = 0
+        filled += self._ats_try_fill(page, "#first_name, input[name*='first_name' i]", first)
+        filled += self._ats_try_fill(page, "#last_name, input[name*='last_name' i]", last)
+        if filled == 0:
+            self._ats_try_fill(page, "input[name*='name' i]:first-of-type", p.full_name)
+        self._ats_try_fill(page, "#email, input[type=email]", p.email)
+        self._ats_try_fill(page, "#phone, input[type=tel]", p.phone)
+        self._ats_try_fill(page, "input[name*='linkedin' i], input[id*='linkedin' i]", p.linkedin_url)
+        self._ats_try_fill(page, "input[name*='website' i], input[id*='website' i]", p.github_url or p.portfolio_url)
+        self._ats_upload_cv(page)
+
+        # Handle education/experience dropdowns with best guess
+        for sel in page.query_selector_all("select"):
+            try:
+                if not sel.is_visible():
+                    continue
+                prompt = self._ats_extract_prompt(page, sel)
+                answer = self._infer_profile_answer(prompt, location=p.location)
+                opts = [o.inner_text().strip() for o in sel.query_selector_all("option") if o.inner_text().strip()]
+                if answer and opts:
+                    for opt in opts:
+                        if answer.lower() in opt.lower():
+                            sel.select_option(label=opt)
+                            break
+                    else:
+                        sel.select_option(index=1)
+                self._human_pause(0.1, 0.3)
+            except Exception:
+                continue
+
+        ok = self._ats_submit(page, ["#submit_app", "input[value*='Submit' i]"])
+        return ok, ("Greenhouse submitted" if ok else "Greenhouse submit failed")
+
+    def _fill_ats_lever(self, page) -> tuple[bool, str]:
+        """Lever ATS (jobs.lever.co). Navigates to /apply if needed."""
+        p = self.config.profile
+
+        # Lever job listing has an "Apply" link — click it
+        if not page.query_selector("input[name=name], input[name=email]"):
+            try:
+                apply_anchor = page.query_selector("a[href*='/apply']")
+                if apply_anchor:
+                    apply_anchor.click()
+                    page.wait_for_load_state("domcontentloaded", timeout=8000)
+                    self._human_reading_pause(0.8, 1.5)
+            except Exception:
+                pass
+
+        self._ats_try_fill(page, "input[name=name]", p.full_name)
+        self._ats_try_fill(page, "input[name=email]", p.email)
+        self._ats_try_fill(page, "input[name=phone]", p.phone)
+        self._ats_try_fill(page, "input[name*='linkedin' i], input[id*='linkedin' i]", p.linkedin_url)
+        self._ats_try_fill(page, "input[name*='github' i]", p.github_url)
+        self._ats_try_fill(page, "input[name*='website' i], input[name*='portfolio' i]", p.portfolio_url or p.github_url)
+        self._ats_upload_cv(page)
+
+        ok = self._ats_submit(page, ["#btn-submit", ".template-btn-submit", ".postings-btn"])
+        return ok, ("Lever submitted" if ok else "Lever submit failed")
+
+    def _fill_ats_ashby(self, page) -> tuple[bool, str]:
+        """Ashby ATS (ashbyhq.com). React app with standard labels."""
+        p = self.config.profile
+        parts = p.full_name.strip().split(None, 1)
+        first, last = parts[0], (parts[1] if len(parts) > 1 else "")
+
+        # Ashby uses label+input pairs; navigate to apply form if needed
+        if not page.query_selector("form"):
+            self._ats_navigate_to_apply_form(page)
+
+        self._ats_try_fill(page,
+            "input[name*='firstName' i], input[placeholder*='first' i]", first)
+        self._ats_try_fill(page,
+            "input[name*='lastName' i], input[placeholder*='last' i]", last)
+        if not page.query_selector("input[name*='firstName' i]"):
+            self._ats_try_fill(page, "input[name*='name' i]:first-of-type", p.full_name)
+        self._ats_try_fill(page, "input[type=email], input[name*='email' i]", p.email)
+        self._ats_try_fill(page, "input[type=tel], input[name*='phone' i]", p.phone)
+        self._ats_try_fill(page, "input[name*='linkedin' i]", p.linkedin_url)
+        self._ats_try_fill(page, "input[name*='github' i]", p.github_url)
+        self._ats_try_fill(page, "input[name*='website' i], input[name*='portfolio' i]",
+                           p.portfolio_url or p.github_url)
+        self._ats_upload_cv(page)
+
+        # Multi-step: click Next if needed, then submit
+        for _step in range(4):
+            next_btn = None
+            for sel in ["button:has-text('Next')", "button:has-text('Continue')",
+                        "button[type=button]:has-text('Next')"]:
+                try:
+                    b = page.query_selector(sel)
+                    if b and b.is_visible():
+                        next_btn = b
+                        break
+                except Exception:
+                    continue
+            if next_btn:
+                next_btn.click()
+                self._human_reading_pause(0.6, 1.2)
+                self._ats_upload_cv(page)  # Re-try upload on each step
+            else:
+                break
+
+        ok = self._ats_submit(page)
+        return ok, ("Ashby submitted" if ok else "Ashby submit failed")
+
+    def _fill_ats_smartrecruiters(self, page) -> tuple[bool, str]:
+        """SmartRecruiters ATS. Multi-step: personal info → resume → questions → submit."""
+        p = self.config.profile
+        parts = p.full_name.strip().split(None, 1)
+        first, last = parts[0], (parts[1] if len(parts) > 1 else "")
+
+        for _step in range(6):
+            self._human_reading_pause(0.4, 0.9)
+
+            # Fill fields visible on this step
+            self._ats_try_fill(page,
+                "input[name=firstName], input[id*='firstName' i], input[placeholder*='first' i]", first)
+            self._ats_try_fill(page,
+                "input[name=lastName], input[id*='lastName' i], input[placeholder*='last' i]", last)
+            self._ats_try_fill(page, "input[type=email]", p.email)
+            self._ats_try_fill(page, "input[type=tel], input[name*='phone' i]", p.phone)
+            self._ats_try_fill(page, "input[name*='linkedin' i]", p.linkedin_url)
+            self._ats_upload_cv(page)
+
+            # Try to advance (Next / Continue / Submit)
+            advanced = False
+            for sel in [
+                "button[data-component='nextButton']",
+                "button:has-text('Next Step')", "button:has-text('Next')",
+                "button:has-text('Continue')", "button[type=submit]",
+                "button:has-text('Submit')",
+            ]:
+                try:
+                    b = page.query_selector(sel)
+                    if b and b.is_visible():
+                        b.click()
+                        self._human_reading_pause(0.8, 1.6)
+                        advanced = True
+                        break
+                except Exception:
+                    continue
+            if not advanced:
+                break
+
+            # Check if we reached a confirmation page
+            try:
+                if page.locator("text=/application.*submitted|thank you/i").first.is_visible(timeout=1500):
+                    return True, "SmartRecruiters submitted"
+            except Exception:
+                pass
+
+        ok = self._ats_submit(page)
+        return ok, ("SmartRecruiters submitted" if ok else "SmartRecruiters submit failed")
+
+    def _fill_ats_bamboohr(self, page) -> tuple[bool, str]:
+        """BambooHR ATS. Standard form with named inputs."""
+        p = self.config.profile
+        parts = p.full_name.strip().split(None, 1)
+        first, last = parts[0], (parts[1] if len(parts) > 1 else "")
+
+        if not page.query_selector("form"):
+            self._ats_navigate_to_apply_form(page)
+
+        self._ats_try_fill(page, "input[id=firstName], input[name=firstName]", first)
+        self._ats_try_fill(page, "input[id=lastName], input[name=lastName]", last)
+        self._ats_try_fill(page, "input[id=email], input[name=email], input[type=email]", p.email)
+        self._ats_try_fill(page, "input[id=phone], input[name=phone], input[type=tel]", p.phone)
+        self._ats_try_fill(page, "input[name*='linkedin' i], input[id*='linkedin' i]", p.linkedin_url)
+        self._ats_try_fill(page, "input[name*='website' i]", p.github_url or p.portfolio_url)
+        self._ats_upload_cv(page)
+
+        ok = self._ats_submit(page)
+        return ok, ("BambooHR submitted" if ok else "BambooHR submit failed")
+
+    def _fill_ats_workday(self, page) -> tuple[bool, str]:
+        """Workday ATS. Complex SPA — auto-fills visible fields and drives wizard."""
+        p = self.config.profile
+        parts = p.full_name.strip().split(None, 1)
+        first, last = parts[0], (parts[1] if len(parts) > 1 else "")
+
+        # Workday uses data-automation-id attributes
+        for _step in range(8):
+            self._human_reading_pause(0.5, 1.1)
+
+            # Workday-specific selectors
+            for sel, val in [
+                ("[data-automation-id='legalNameSection_firstName']", first),
+                ("[data-automation-id='legalNameSection_lastName']", last),
+                ("[data-automation-id='email']", p.email),
+                ("[data-automation-id='phone-number']", p.phone),
+                ("[data-automation-id='addressSection_addressLine1']", getattr(p, "address", "") or ""),
+                ("[data-automation-id='linkedIn']", p.linkedin_url),
+            ]:
+                if val:
+                    self._ats_try_fill(page, sel, val)
+
+            # Also try generic inputs
+            self._ats_try_fill(page, "input[placeholder*='First' i]", first)
+            self._ats_try_fill(page, "input[placeholder*='Last' i]", last)
+            self._ats_try_fill(page, "input[type=email]", p.email)
+            self._ats_try_fill(page, "input[type=tel]", p.phone)
+            self._ats_upload_cv(page)
+
+            # Advance through wizard
+            advanced = False
+            for sel in [
+                "button[data-automation-id='bottom-navigation-next-button']",
+                "button[data-automation-id='pageFooter-button-next']",
+                "button:has-text('Next')", "button:has-text('Save and Continue')",
+                "button[type=submit]", "button:has-text('Submit')",
+            ]:
+                try:
+                    b = page.query_selector(sel)
+                    if b and b.is_visible():
+                        b.click()
+                        self._human_reading_pause(1.0, 2.0)
+                        advanced = True
+                        break
+                except Exception:
+                    continue
+            if not advanced:
+                break
+
+            try:
+                if page.locator("text=/application.*submitted|thank you/i").first.is_visible(timeout=1500):
+                    return True, "Workday submitted"
+            except Exception:
+                pass
+
+        ok = self._ats_submit(page)
+        return ok, ("Workday submitted" if ok else "Workday submit failed")
+
+    def _fill_ats_recruitee(self, page) -> tuple[bool, str]:
+        """Recruitee ATS. Standard React form."""
+        p = self.config.profile
+        parts = p.full_name.strip().split(None, 1)
+        first, last = parts[0], (parts[1] if len(parts) > 1 else "")
+
+        if not page.query_selector("form"):
+            self._ats_navigate_to_apply_form(page)
+
+        self._ats_try_fill(page, "input[name*='first' i], input[placeholder*='first' i]", first)
+        self._ats_try_fill(page, "input[name*='last' i], input[placeholder*='last' i]", last)
+        self._ats_try_fill(page, "input[type=email]", p.email)
+        self._ats_try_fill(page, "input[type=tel], input[name*='phone' i]", p.phone)
+        self._ats_try_fill(page, "input[name*='linkedin' i]", p.linkedin_url)
+        self._ats_upload_cv(page)
+
+        ok = self._ats_submit(page)
+        return ok, ("Recruitee submitted" if ok else "Recruitee submit failed")
+
+    def _fill_ats_personio(self, page) -> tuple[bool, str]:
+        """Personio ATS (personio.com embedded widget)."""
+        p = self.config.profile
+        parts = p.full_name.strip().split(None, 1)
+        first, last = parts[0], (parts[1] if len(parts) > 1 else "")
+
+        self._ats_try_fill(page, "input[name*='first' i], input[id*='first' i]", first)
+        self._ats_try_fill(page, "input[name*='last' i], input[id*='last' i]", last)
+        self._ats_try_fill(page, "input[type=email], input[name*='email' i]", p.email)
+        self._ats_try_fill(page, "input[type=tel], input[name*='phone' i]", p.phone)
+        self._ats_try_fill(page, "input[name*='linkedin' i]", p.linkedin_url)
+        self._ats_upload_cv(page)
+
+        ok = self._ats_submit(page)
+        return ok, ("Personio submitted" if ok else "Personio submit failed")
+
+    def _fill_ats_workable(self, page) -> tuple[bool, str]:
+        """Workable ATS (workable.com). React app with standard inputs."""
+        p = self.config.profile
+        parts = p.full_name.strip().split(None, 1)
+        first, last = parts[0], (parts[1] if len(parts) > 1 else "")
+
+        if not page.query_selector("form"):
+            self._ats_navigate_to_apply_form(page)
+
+        self._ats_try_fill(page, "input[name=firstname], input[name*='first' i]", first)
+        self._ats_try_fill(page, "input[name=lastname], input[name*='last' i]", last)
+        self._ats_try_fill(page, "input[name=email], input[type=email]", p.email)
+        self._ats_try_fill(page, "input[name=phone], input[type=tel]", p.phone)
+        self._ats_try_fill(page, "input[name*='linkedin' i]", p.linkedin_url)
+        self._ats_try_fill(page, "input[name*='github' i]", p.github_url)
+        self._ats_upload_cv(page)
+
+        ok = self._ats_submit(page)
+        return ok, ("Workable submitted" if ok else "Workable submit failed")
+
+    def _fill_ats_jobvite(self, page) -> tuple[bool, str]:
+        """Jobvite ATS (jobvite.com)."""
+        p = self.config.profile
+        parts = p.full_name.strip().split(None, 1)
+        first, last = parts[0], (parts[1] if len(parts) > 1 else "")
+
+        self._ats_try_fill(page, "input[id*='firstName' i], input[name*='firstName' i]", first)
+        self._ats_try_fill(page, "input[id*='lastName' i], input[name*='lastName' i]", last)
+        self._ats_try_fill(page, "input[type=email], input[id*='email' i]", p.email)
+        self._ats_try_fill(page, "input[type=tel], input[id*='phone' i]", p.phone)
+        self._ats_try_fill(page, "input[id*='linkedin' i]", p.linkedin_url)
+        self._ats_upload_cv(page)
+
+        ok = self._ats_submit(page)
+        return ok, ("Jobvite submitted" if ok else "Jobvite submit failed")
+
+    def _fill_ats_icims(self, page) -> tuple[bool, str]:
+        """iCIMS ATS. Multi-frame, complex — drive visible steps."""
+        p = self.config.profile
+        parts = p.full_name.strip().split(None, 1)
+        first, last = parts[0], (parts[1] if len(parts) > 1 else "")
+
+        for _step in range(6):
+            self._human_reading_pause(0.5, 1.0)
+            self._ats_try_fill(page, "input[id*='firstname' i]", first)
+            self._ats_try_fill(page, "input[id*='lastname' i]", last)
+            self._ats_try_fill(page, "input[type=email]", p.email)
+            self._ats_try_fill(page, "input[type=tel]", p.phone)
+            self._ats_upload_cv(page)
+
+            advanced = False
+            for sel in ["button:has-text('Next')", "input[value='Next']",
+                        "button:has-text('Continue')", "button[type=submit]"]:
+                try:
+                    b = page.query_selector(sel)
+                    if b and b.is_visible():
+                        b.click()
+                        self._human_reading_pause(0.8, 1.5)
+                        advanced = True
+                        break
+                except Exception:
+                    continue
+            if not advanced:
+                break
+
+            try:
+                if page.locator("text=/application.*received|thank you|submitted/i").first.is_visible(timeout=1500):
+                    return True, "iCIMS submitted"
+            except Exception:
+                pass
+
+        ok = self._ats_submit(page)
+        return ok, ("iCIMS submitted" if ok else "iCIMS submit failed")
+
+    def _fill_ats_successfactors(self, page) -> tuple[bool, str]:
+        """SAP SuccessFactors. Drive wizard steps with generic fill."""
+        for _step in range(6):
+            self._human_reading_pause(0.5, 1.0)
+            # SuccessFactors uses iframes on some versions — try to fill visible inputs
+            ok_try, note_try = self._fill_generic_external(page)
+            if ok_try:
+                return True, f"SuccessFactors submitted: {note_try}"
+            # Advance wizard
+            advanced = False
+            for sel in ["button:has-text('Next')", "button:has-text('Continue')",
+                        "a:has-text('Next')", "button[type=submit]"]:
+                try:
+                    b = page.query_selector(sel)
+                    if b and b.is_visible():
+                        b.click()
+                        self._human_reading_pause(0.8, 1.5)
+                        advanced = True
+                        break
+                except Exception:
+                    continue
+            if not advanced:
+                break
+        return False, "SuccessFactors could not submit"
+
+    def _fill_ats_dispatch(self, page) -> tuple[bool, str]:
+        """Route to the correct ATS-specific filler based on page URL, then fall back to generic."""
+        url = page.url
+        ats = self._detect_ats(url)
+        self._log(f"[ATS] Routing to adapter: {ats}")
+
+        ats_map = {
+            "greenhouse":      self._fill_ats_greenhouse,
+            "lever":           self._fill_ats_lever,
+            "ashby":           self._fill_ats_ashby,
+            "smartrecruiters": self._fill_ats_smartrecruiters,
+            "bamboohr":        self._fill_ats_bamboohr,
+            "workday":         self._fill_ats_workday,
+            "teamtailor":      self._fill_teamtailor,
+            "recruitee":       self._fill_ats_recruitee,
+            "personio":        self._fill_ats_personio,
+            "workable":        self._fill_ats_workable,
+            "jobvite":         self._fill_ats_jobvite,
+            "icims":           self._fill_ats_icims,
+            "successfactors":  self._fill_ats_successfactors,
+            "oracle_hcm":      self._fill_ats_workday,  # similar wizard pattern
+            "taleo":           self._fill_ats_icims,    # similar multi-step
+            "applytojob":      self._fill_ats_bamboohr, # similar simple form
+        }
+
+        filler = ats_map.get(ats, self._fill_generic_external)
+        try:
+            return filler(page)
+        except Exception as exc:
+            self._log(f"[ATS] {ats} adapter failed ({exc}), retrying with generic")
+            try:
+                return self._fill_generic_external(page)
+            except Exception as exc2:
+                return False, f"All fillers failed: {exc2}"
+
     def _fill_generic_external(self, page) -> tuple[bool, str]:
         """Best-effort generic form fill for any external ATS page."""
         p = self.config.profile
         parts = p.full_name.strip().split(None, 1)
         first, last = parts[0], (parts[1] if len(parts) > 1 else "")
 
-        # Map of (lowercase keywords in label/name/placeholder) ΓåÆ value to fill
+        # Map of (lowercase keywords in label/name/placeholder) Î“Ã¥Ã† value to fill
         fill_map: list[tuple[tuple[str, ...], str]] = [
-            (("first name", "firstname", "first_name", "nome", "vorname", "keresztn├⌐v"), first),
-            (("last name", "lastname", "last_name", "surname", "cognome", "nachname", "vezet├⌐kn├⌐v"), last),
-            (("full name", "your name", "teljes n├⌐v"), p.full_name),
+            (("first name", "firstname", "first_name", "nome", "vorname", "keresztnâ”œâŒv"), first),
+            (("last name", "lastname", "last_name", "surname", "cognome", "nachname", "vezetâ”œâŒknâ”œâŒv"), last),
+            (("full name", "your name", "teljes nâ”œâŒv"), p.full_name),
             (("email", "e-mail"), p.email),
             (("phone", "telephone", "telefono", "telefon", "mobile", "mobil"), p.phone),
             (("linkedin",), p.linkedin_url),
@@ -3565,10 +4251,10 @@ class LinkedInAutoApplyBot:
         self._persist_company_motivation_letter(title=job_title, company=company, body=letter)
         return letter
 
-    # ΓöÇΓöÇ Ollama AI: answer open-text job application questions ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # Î“Ã¶Ã‡Î“Ã¶Ã‡ Ollama AI: answer open-text job application questions Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡
     _OLLAMA_URL = "http://localhost:11434/api/generate"
     _OLLAMA_MODEL = "llama3"          # change to "mistral" or any installed model
-    _OLLAMA_TIMEOUT = 8               # seconds ΓÇô kept short to avoid blocking the flow
+    _OLLAMA_TIMEOUT = 8               # seconds Î“Ã‡Ã´ kept short to avoid blocking the flow
 
     def _ai_pick_dropdown_option(
         self,
@@ -3591,7 +4277,7 @@ class LinkedInAutoApplyBot:
         system = (
             "You are helping fill a job application form. "
             "Given a question and a numbered list of dropdown options, "
-            "reply ONLY with the number (1, 2, 3 ΓÇª) of the best option for the candidate. "
+            "reply ONLY with the number (1, 2, 3 Î“Ã‡Âª) of the best option for the candidate. "
             "No explanation. Just the number."
         )
         user_msg = (
@@ -3718,7 +4404,7 @@ class LinkedInAutoApplyBot:
         return actions
 
     def _ai_choose_apply_action(self, page, actions: list[dict[str, Any]], *, step: int, title: str = "", company: str = "") -> str | None:
-        """Choose next Easy Apply action using deterministic priority (no AI ΓÇö saves ~12 s/step)."""
+        """Choose next Easy Apply action using deterministic priority (no AI Î“Ã‡Ã¶ saves ~12 s/step)."""
         if not actions:
             return None
 
@@ -3729,7 +4415,7 @@ class LinkedInAutoApplyBot:
                 return key
         return None
 
-        fallback_choice = None  # unreachable ΓÇö kept so diff is clean
+        fallback_choice = None  # unreachable Î“Ã‡Ã¶ kept so diff is clean
         for key in preferred_order:
             if any(a.get("kind") == key for a in actions):
                 fallback_choice = key
@@ -3753,7 +4439,7 @@ class LinkedInAutoApplyBot:
 
             profile = self.config.profile
 
-            # ΓöÇΓöÇ Strategy 1: Message button directly on the job page ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+            # Î“Ã¶Ã‡Î“Ã¶Ã‡ Strategy 1: Message button directly on the job page Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡
             # LinkedIn shows "Meet the hiring team" / "People you can reach out to"
             # with a Message button right on the job page.
             poster_name_el = page.query_selector(
@@ -3879,7 +4565,7 @@ class LinkedInAutoApplyBot:
                 except Exception as e:
                     pass  # Fall through to profile-page strategy
 
-            # ΓöÇΓöÇ Strategy 2: Navigate to poster's LinkedIn profile ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+            # Î“Ã¶Ã‡Î“Ã¶Ã‡ Strategy 2: Navigate to poster's LinkedIn profile Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡
             poster_link = poster_name_el
             if not poster_link:
                 # Try broader selectors
@@ -4277,7 +4963,7 @@ class LinkedInAutoApplyBot:
                 timeout=timeout_ms,
             )
         except Exception:
-            pass  # No spinner found ΓÇö that's fine
+            pass  # No spinner found Î“Ã‡Ã¶ that's fine
 
     def _dismiss_apply_flow(self, page) -> None:
         discard = page.query_selector("button:has-text('Discard')")
@@ -4382,6 +5068,96 @@ class LinkedInAutoApplyBot:
             page.keyboard.type(ch)
             time.sleep(random.uniform(0.03, 0.09))
 
+
+    def _human_move_mouse_to(self, page, el) -> None:
+        """Move the mouse in a natural curved path to el, ending with hover."""
+        try:
+            box = el.bounding_box()
+            if not box:
+                return
+            tx = box["x"] + box["width"] * random.uniform(0.3, 0.7)
+            ty = box["y"] + box["height"] * random.uniform(0.25, 0.75)
+            sx = tx + random.uniform(-250, 250)
+            sy = ty + random.uniform(-150, 150)
+            sx = max(0, sx)
+            sy = max(0, sy)
+            steps = random.randint(8, 18)
+            for i in range(1, steps + 1):
+                t = i / steps
+                t2 = t * t * (3 - 2 * t)
+                jx = random.uniform(-4, 4)
+                jy = random.uniform(-3, 3)
+                ix = sx + (tx - sx) * t2 + jx
+                iy = sy + (ty - sy) * t2 + jy
+                page.mouse.move(ix, iy)
+                time.sleep(random.uniform(0.004, 0.018))
+        except Exception:
+            pass
+
+    def _human_scroll_to_element(self, page, el) -> None:
+        """Scroll to el naturally."""
+        try:
+            el.scroll_into_view_if_needed(timeout=1500)
+            self._human_pause(0.1, 0.3)
+        except Exception:
+            pass
+
+    def _human_reading_pause(self, min_s: float = 0.6, max_s: float = 2.2) -> None:
+        """Pause as if the user is reading the page."""
+        import time as _time
+        _time.sleep(random.uniform(min_s, max_s))
+
+    def _dismiss_cookie_consent(self, page) -> None:
+        """Dismiss common cookie/GDPR consent banners that block interaction."""
+        selectors = [
+            "button#CybotCookiebotDialogBodyButtonDecline",
+            "button#CybotCookiebotDialogBodyLevelButtonAccept",
+            "button:has-text('Allow selection')",
+            "button:has-text('Deny')",
+            "button:has-text('Accept necessary')",
+            "button:has-text('Accept')",
+            "button:has-text('OK')",
+            "button:has-text('Got it')",
+            "button:has-text('I agree')",
+            "button:has-text('Agree')",
+            "[aria-label*='Accept cookies']",
+            "[aria-label*='Decline cookies']",
+            "#cookie-consent button",
+            ".cookie-banner button",
+            ".gdpr-banner button",
+            "[class*='cookie'] button",
+            "[id*='cookie'] button",
+        ]
+        for sel in selectors:
+            try:
+                btn = page.locator(sel).first
+                if btn.is_visible(timeout=800):
+                    btn.click(timeout=1500)
+                    self._human_pause(0.3, 0.6)
+                    return
+            except Exception:
+                continue
+
+
+    def _setup_page_as_human(self, page) -> None:
+        """Inject JS that removes bot-detection signals from the page context."""
+        try:
+            stealth_js = """
+                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                Object.defineProperty(navigator, 'plugins', {get: () => [1,2,3,4,5]});
+                Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+                window.chrome = {runtime: {}};
+                const origQuery = window.navigator.permissions.query;
+                window.navigator.permissions.query = (p) =>
+                    p.name === 'notifications'
+                        ? Promise.resolve({state: Notification.permission})
+                        : origQuery(p);
+            """
+            page.add_init_script(stealth_js)
+        except Exception:
+            pass
+
+
     def _text_or_empty(self, page, selector: str) -> str:
         el = page.query_selector(selector)
         return (el.inner_text() if el else "") or ""
@@ -4419,1100 +5195,6 @@ class LinkedInAutoApplyBot:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8") as f:
             json.dump(content, f, indent=2, ensure_ascii=True)
-
-    # ΓöÇΓöÇ Networking campaign ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-
-    def run_networking_campaign(self) -> dict[str, Any]:
-        """Connect with recruiters / hiring managers at top tech companies.
-
-        Returns a dict with stats: sent, skipped, failures.
-        Uses the same Playwright session as the apply bot (reuses saved login state).
-        """
-        start = datetime.now(timezone.utc).isoformat()
-        net_stats: dict[str, int] = {"sent": 0, "skipped": 0, "failures": 0}
-
-        run_headless = self.config.settings.headless
-        if not self.config.paths.browser_state_path.exists():
-            run_headless = False
-
-        with sync_playwright() as p:
-            browser = None
-            for channel in ["chrome", "msedge"]:
-                try:
-                    browser = p.chromium.launch(headless=run_headless, channel=channel)
-                    break
-                except Exception:
-                    continue
-            if browser is None:
-                browser = p.chromium.launch(headless=run_headless)
-
-            context = browser.new_context(
-                storage_state=str(self.config.paths.browser_state_path)
-                if self.config.paths.browser_state_path.exists()
-                else None
-            )
-            page = context.new_page()
-            try:
-                self._login(page)
-                self._do_networking(page, net_stats)
-            finally:
-                context.storage_state(path=str(self.config.paths.browser_state_path))
-                context.close()
-                browser.close()
-
-        return {
-            "started_at": start,
-            "ended_at": datetime.now(timezone.utc).isoformat(),
-            "stats": net_stats,
-        }
-
-    def _do_networking(self, page, stats: dict[str, int]) -> None:
-        """Iterate over target companies ├ù roles, send connection requests."""
-        network_log_path = self.config.paths.base_dir / "network_sent.json"
-        sent: dict[str, Any] = self._read_json(network_log_path, default={})
-
-        max_per_run: int = getattr(self.config.settings, "max_network_per_run", 20)
-        count = 0
-
-        for company in NETWORKING_TARGET_COMPANIES:
-            if count >= max_per_run:
-                break
-
-            # ΓöÇΓöÇ Follow the company page ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-            follow_key = f"__follow__{company.lower()}"
-            if follow_key not in sent:
-                try:
-                    company_search_url = (
-                        "https://www.linkedin.com/search/results/companies/"
-                        f"?keywords={quote_plus(company)}"
-                    )
-                    page.goto(company_search_url, wait_until="domcontentloaded", timeout=60_000)
-                    self._human_pause()
-                    # Click the first company result
-                    first_link = page.query_selector(
-                        "a[href*='/company/'], "
-                        ".entity-result__title-text a, "
-                        "div[data-view-name='search-entity-result-universal-template'] a[href*='/company/']"
-                    )
-                    if first_link:
-                        company_href = first_link.get_attribute("href") or ""
-                        if company_href.startswith("/"):
-                            company_href = "https://www.linkedin.com" + company_href
-                        company_href = company_href.split("?")[0]
-                        page.goto(company_href, wait_until="domcontentloaded", timeout=60_000)
-                        self._human_pause()
-                        # Find the Follow button on the company page
-                        follow_btn = None
-                        for sel in [
-                            "button[aria-label*='Follow'][aria-label*='" + company + "']",
-                            "button[aria-label='Follow']",
-                            "button:has-text('Follow')",
-                        ]:
-                            try:
-                                b = page.query_selector(sel)
-                                if b:
-                                    follow_btn = b
-                                    break
-                            except Exception:
-                                pass
-                        if follow_btn:
-                            follow_btn.click(timeout=3000)
-                            self._human_pause(0.5, 1.0)
-                            sent[follow_key] = {"company": company, "followed_at": datetime.now(timezone.utc).isoformat()}
-                            self._write_json(network_log_path, sent)
-                            stats["sent"] += 1
-                except Exception:
-                    pass
-
-            for role in NETWORKING_TARGET_ROLES:
-                if count >= max_per_run:
-                    break
-
-                search_url = (
-                    "https://www.linkedin.com/search/results/people/"
-                    f"?keywords={quote_plus(role + ' ' + company)}"
-                    "&origin=FACETED_SEARCH"
-                )
-                try:
-                    page.goto(search_url, wait_until="domcontentloaded", timeout=60_000)
-                    self._human_pause()
-                    self._progressive_scroll(page, iterations=3)
-                except Exception:
-                    continue
-
-                # Collect result cards ΓÇö LinkedIn has changed layouts several times;
-                # try all known variants from newest to oldest.
-                cards = (
-                    page.query_selector_all("li.reusable-search__result-container")
-                    or page.query_selector_all(".entity-result__item")
-                    or page.query_selector_all("div[data-view-name='search-entity-result-universal-template']")
-                    or page.query_selector_all("ul.reusable-search__entity-result-list > li")
-                    or page.query_selector_all(".search-results-container li")
-                )
-
-                if not cards:
-                    # Try waiting for results to load then retry
-                    try:
-                        page.wait_for_selector("li, .entity-result", timeout=8_000)
-                        cards = (
-                            page.query_selector_all("li.reusable-search__result-container")
-                            or page.query_selector_all("div[data-view-name='search-entity-result-universal-template']")
-                            or page.query_selector_all(".search-results-container li")
-                        )
-                    except Exception:
-                        pass
-
-                for card in cards:
-                    if count >= max_per_run:
-                        break
-
-                    # Resolve a stable profile URL for dedup
-                    profile_url: str | None = None
-                    try:
-                        link = card.query_selector("a[href*='/in/']")
-                        if link:
-                            href = link.get_attribute("href") or ""
-                            m = re.search(r"linkedin\.com(/in/[^/?#]+)", href)
-                            profile_url = f"https://www.linkedin.com{m.group(1)}" if m else None
-                    except Exception:
-                        pass
-
-                    if not profile_url:
-                        continue
-                    if profile_url in sent:
-                        stats["skipped"] += 1
-                        continue
-
-                    result = self._send_connection_request_on_card(page, card)
-                    if result is True:
-                        sent[profile_url] = {
-                            "company": company,
-                            "role": role,
-                            "sent_at": datetime.now(timezone.utc).isoformat(),
-                        }
-                        self._write_json(network_log_path, sent)
-                        stats["sent"] += 1
-                        count += 1
-                        self._human_pause()
-                    elif result is False:
-                        stats["failures"] += 1
-                    # None == already connected / button absent ΓÇö skip silently
-
-    def _send_connection_request_on_card(self, page, card) -> bool | None:
-        """Click Connect on a search-result card and confirm the modal.
-
-        Returns:
-            True  ΓÇö invitation sent successfully
-            False ΓÇö an error occurred
-            None  ΓÇö not applicable (already connected, button absent, etc.)
-        """
-        try:
-            # 1. Find the Connect button directly on the card
-            connect_btn = None
-            for sel in [
-                "button[aria-label*='Invite'][aria-label*='connect']",
-                "button[aria-label*='Connect']",
-                "button[aria-label*='connect']",
-            ]:
-                try:
-                    connect_btn = card.query_selector(sel)
-                    if connect_btn:
-                        break
-                except Exception:
-                    pass
-
-            if not connect_btn:
-                # Scan all buttons for text "Connect"
-                for btn in (card.query_selector_all("button") or []):
-                    try:
-                        if (btn.inner_text() or "").strip().lower() == "connect":
-                            connect_btn = btn
-                            break
-                    except Exception:
-                        pass
-
-            if not connect_btn:
-                # Try "..." overflow menu
-                more_btn = None
-                for sel in [
-                    "button[aria-label='More actions']",
-                    "button[aria-label*='more actions']",
-                    "button[aria-label*='More']",
-                ]:
-                    try:
-                        more_btn = card.query_selector(sel)
-                        if more_btn:
-                            break
-                    except Exception:
-                        pass
-
-                if not more_btn:
-                    return None  # No way to connect from this card
-
-                more_btn.click(timeout=3000)
-                page.wait_for_timeout(700)
-                for sel in [
-                    "div[role='option']:has-text('Connect')",
-                    "li[role='option']:has-text('Connect')",
-                    "span:has-text('Connect')",
-                ]:
-                    try:
-                        item = page.query_selector(sel)
-                        if item:
-                            item.click(timeout=3000)
-                            connect_btn = True  # sentinel ΓÇö modal will follow
-                            break
-                    except Exception:
-                        pass
-
-                if not connect_btn:
-                    return None
-            else:
-                connect_btn.click(timeout=3000)
-
-            page.wait_for_timeout(1200)
-
-            # 2. Handle post-click modal
-            # "Send now" / "Send without a note"
-            for sel in [
-                "button[aria-label='Send now']",
-                "button[aria-label='Send without a note']",
-                "button:has-text('Send now')",
-                "button:has-text('Send without a note')",
-            ]:
-                try:
-                    btn = page.query_selector(sel)
-                    if btn:
-                        btn.click(timeout=3000)
-                        page.wait_for_timeout(800)
-                        return True
-                except Exception:
-                    pass
-
-            # "How do you know X?" ΓÇö dismiss; we can't auto-categorize
-            for sel in [
-                "button[aria-label='Dismiss']",
-                "button[aria-label='Close']",
-                "button:has-text('Cancel')",
-            ]:
-                try:
-                    btn = page.query_selector(sel)
-                    if btn:
-                        btn.click(timeout=2000)
-                        return None
-                except Exception:
-                    pass
-
-            # No modal visible ΓÇö request likely sent inline (no extra step required)
-            return True
-
-        except Exception:
-            return False
-
-    # ΓöÇΓöÇ State helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-
-    def _write_state(self) -> None:
-        self._write_json(self.config.paths.state_path, self.state)
-
-    def _reached_limit(self) -> bool:
-        # Only count jobs that were actually actioned (submitted, dry_run, failure).
-        # "manual_required" = external ATS that couldn't auto-submit ΓåÆ doesn't burn a slot.
-        # "skipped" = already seen / redirected ΓåÆ also doesn't count.
-        processed = (
-            self.stats["submitted"]
-            + self.stats["dry_run"]
-            + self.stats["failures"]
-        )
-        return processed >= self.limit
-
-    # Indeed / Glassdoor are excluded â€” they CAPTCHA-block automated browsers.
-
-    _DIRECT_EXTERNAL_SITES: list[dict] = [
-        {
-            "name": "WeWorkRemotely",
-            "search_url": "https://weworkremotely.com/remote-jobs/search?term={keywords}",
-            "card_selectors": ["section.jobs ul li:not(.view-all)", "article"],
-            "card_selectors": ["a[href*='/remote-jobs/']", "section.jobs ul li:not(.view-all)", "article"],
-            "apply_btn_selectors": [
-                "a:has-text('Apply for this position')",
-                "a:has-text('Apply')",
-                ".apply-link",
-            ],
-            "next_page_selector": None,
-        },
-        {
-            "name": "RemoteOK",
-            "search_url": "https://remoteok.com/remote-{kw_slug}-jobs",
-            "card_selectors": ["tr[data-id]", "tr.job"],
-            "apply_btn_selectors": [
-                "a.button:has-text('Apply')",
-                "a[class*='apply']",
-                "a:has-text('Apply')",
-            ],
-            "next_page_selector": None,
-        },
-        {
-            "name": "EuropeRemoteJobs",
-            "search_url": "https://europeremotejobs.com/remote-jobs/?s={keywords}",
-            "card_selectors": [".job_listing", "li.job_listing", ".job-listing", "article", "h2 a[href]"],
-            "apply_btn_selectors": [
-                "a.apply_button",
-                "a:has-text('Apply for job')",
-                "a:has-text('Apply')",
-                "a:has-text('Apply Now')",
-                "a[href*='apply']",
-            ],
-            "next_page_selector": "a.next",
-        },
-        {
-            "name": "Jobicy",
-            "search_url": "https://jobicy.com/jobs/?s={keywords}",
-            "card_selectors": ["article.job-post", ".job-post", "li[class*='job']", "a[href*='/jobs/']", "h2 a[href]"],
-            "apply_btn_selectors": [
-                "a.apply-btn",
-                "a:has-text('Apply')",
-                "a[href*='apply']",
-                "a:has-text('Apply now')",
-            ],
-            "next_page_selector": "a.next",
-        },
-    ]
-
-    def run_direct_external_campaign(self) -> dict[str, Any]:
-        """Browse external job boards directly â€” no LinkedIn.
-        Uses WeWorkRemotely, RemoteOK, and other bot-friendly remote job sites.
-        """
-        start = datetime.now(timezone.utc).isoformat()
-        stats: dict[str, int] = {"scanned": 0, "submitted": 0, "skipped": 0, "failures": 0, "errors": 0}
-
-        run_headless = self.config.settings.headless
-        visible_args = [] if run_headless else [
-            "--start-maximized", "--window-position=0,0",
-            "--disable-blink-features=AutomationControlled",
-        ]
-        launch_kw: dict = {
-            "headless": run_headless,
-            "args": visible_args + [
-                "--no-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-infobars",
-            ],
-        }
-        if not run_headless:
-            launch_kw["slow_mo"] = 80
-
-        with sync_playwright() as pw:
-            browser = None
-            for channel in ["chrome", "msedge"]:
-                try:
-                    browser = pw.chromium.launch(channel=channel, **launch_kw)
-                    break
-                except Exception:
-                    continue
-            if browser is None:
-                browser = pw.chromium.launch(**launch_kw)
-            self._active_browser = browser
-
-            context = browser.new_context(
-                viewport={"width": 1366, "height": 768},
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0.0.0 Safari/537.36"
-                ),
-                locale="en-US",
-                timezone_id="Europe/Budapest",
-            )
-            self._active_context = context
-
-            # Open the first job site immediately so the user sees a real page right away
-            if not run_headless:
-                first_url = (
-                    self._DIRECT_EXTERNAL_SITES[0]["search_url"]
-                    .replace("{keywords}", quote_plus((self.config.settings.keywords or ["Software Developer"])[0]))
-                    .replace("{kw_slug}", (self.config.settings.keywords or ["Software Developer"])[0].lower().replace(" ", "-"))
-                )
-                splash = context.new_page()
-                self._setup_page_as_human(splash)
-                try:
-                    splash.goto(first_url, wait_until="domcontentloaded", timeout=15000)
-                    splash.bring_to_front()
-                    self._human_reading_pause(0.5, 1.0)
-                except Exception:
-                    pass
-                splash.close()
-
-            try:
-                for site in self._DIRECT_EXTERNAL_SITES:
-                    if self.stop_requested:
-                        break
-                    try:
-                       if site.get("name") == "RemoteOK":
-                           self._direct_external_search_remoteok_api(context, site, stats)
-                       else:
-                           self._direct_external_search_site(context, site, stats)
-                    except Exception as exc:
-                        self._log(f"[DIRECT-EXT] Site {site['name']} error: {exc}")
-                        stats["errors"] += 1
-            finally:
-                try:
-                    context.close()
-                except Exception:
-                    pass
-                try:
-                    browser.close()
-                except Exception:
-                    pass
-                self._active_context = None
-                self._active_browser = None
-
-        return {
-            "started_at": start,
-            "ended_at": datetime.now(timezone.utc).isoformat(),
-            "stats": stats,
-            "job_events": self._job_events,
-        }
-
-    def _direct_external_search_site(self, context, site: dict, stats: dict) -> None:
-        """Search one external job board and attempt to apply to found jobs."""
-        p = self.config.profile
-        s = self.config.settings
-
-        profile_title = (getattr(p, "current_job_title", "") or "").strip()
-        keywords = profile_title or "Software Engineer"
-        location = getattr(s, "locations", [None])[0] or "Remote"
-        kw_slug = keywords.lower().replace(" ", "-")
-
-        search_url = (
-            site["search_url"]
-            .replace("{keywords}", quote_plus(keywords))
-            .replace("{location}", quote_plus(location))
-            .replace("{kw_slug}", kw_slug)
-        )
-
-        page = context.new_page()
-        self._setup_page_as_human(page)
-        try:
-            self._log(f"[DIRECT-EXT] Opening {site['name']}: {search_url}")
-            try:
-                page.goto(search_url, wait_until="domcontentloaded", timeout=20000)
-                # Wait for JS to render job listings
-                try:
-                    page.wait_for_load_state("networkidle", timeout=10000)
-                except Exception:
-                    pass
-                page.bring_to_front()
-            except Exception as nav_exc:
-                self._log(f"[DIRECT-EXT] {site['name']} navigation failed: {nav_exc}")
-                stats["errors"] += 1
-                return
-
-            # Check for CAPTCHA or bot-detection wall immediately
-            page_issue = self._detect_external_page_error(page, search_url)
-            if page_issue:
-                self._log(f"[DIRECT-EXT] {site['name']} error page: {page_issue}")
-                stats["errors"] += 1
-                return
-
-            wall = self._detect_external_account_wall(page)
-            if wall:
-                self._log(f"[DIRECT-EXT] {site['name']} requires login: {wall}")
-                stats["skipped"] += 1
-                return
-
-            self._human_reading_pause(1.0, 2.0)
-
-            page_num = 0
-            max_pages = 2
-            applied_this_site = 0
-
-            while page_num < max_pages and not self.stop_requested:
-                page_num += 1
-
-                # Scroll through the results page naturally
-                self._direct_external_scroll_results(page)
-
-                # Collect all visible job card links
-                job_links = self._direct_external_collect_jobs(page, site)
-                if not job_links and page_num == 1:
-                    # Some boards ignore URL params; try in-page search
-                    self._direct_external_try_inpage_search(page, keywords, location)
-                    self._direct_external_scroll_results(page)
-                    job_links = self._direct_external_collect_jobs(page, site)
-                self._log(f"[DIRECT-EXT] {site['name']} page {page_num}: found {len(job_links)} jobs")
-
-                for job_url in job_links:
-                    if self.stop_requested:
-                        break
-                    if applied_this_site >= (self.limit or 10):
-                        break
-                    stats["scanned"] += 1
-                    try:
-                        ok = self._direct_external_apply_one(context, job_url, site, stats)
-                        if ok:
-                            applied_this_site += 1
-                    except Exception as exc:
-                        import traceback
-                        self._log(f"[DIRECT-EXT] Apply error {job_url[:60]}: {exc}")
-                        self._log(traceback.format_exc()[-1200:])
-                        stats["failures"] += 1
-
-                # Try to go to next page
-                if not site.get("next_page_selector"):
-                    break
-                try:
-                    next_btn = page.locator(site["next_page_selector"]).first
-                    if not next_btn.is_visible(timeout=2000):
-                        break
-                    next_btn.click(timeout=3000)
-                    self._human_reading_pause(1.5, 2.5)
-                except Exception:
-                    break
-        finally:
-            page.close()
-
-    def _direct_external_search_remoteok_api(self, context, site: dict, stats: dict) -> None:
-        """Use RemoteOK API to get direct apply/company URLs and skip dead aiok.co redirects."""
-        p = self.config.profile
-        profile_title = (getattr(p, "current_job_title", "") or "").strip().lower()
-        keywords = [w for w in profile_title.split() if len(w) > 2] or ["software", "engineer"]
-
-        page = context.new_page()
-        self._setup_page_as_human(page)
-        try:
-            api_url = "https://remoteok.com/api"
-            self._log(f"[DIRECT-EXT] Opening RemoteOK API: {api_url}")
-            try:
-                page.goto(api_url, wait_until="domcontentloaded", timeout=20000)
-                body = page.locator("body").inner_text(timeout=6000)
-                data = json.loads(body)
-            except Exception as exc:
-                self._log(f"[DIRECT-EXT] RemoteOK API failed: {exc}")
-                stats["errors"] += 1
-                return
-
-            jobs = []
-            for item in data if isinstance(data, list) else []:
-                if not isinstance(item, dict):
-                    continue
-                position = (item.get("position") or "").lower()
-                tags = " ".join(item.get("tags") or []).lower()
-                hay = f"{position} {tags}"
-                if keywords and not any(k in hay for k in keywords):
-                    continue
-                apply_url = (item.get("apply_url") or item.get("url") or "").strip()
-                if not apply_url:
-                    continue
-                low = apply_url.lower()
-                if "aiok.co" in low:
-                    continue
-                jobs.append(apply_url)
-                if len(jobs) >= 20:
-                    break
-
-            self._log(f"[DIRECT-EXT] RemoteOK API: found {len(jobs)} direct apply URLs")
-
-            applied_this_site = 0
-            for job_url in jobs:
-                if self.stop_requested:
-                    break
-                if applied_this_site >= (self.limit or 10):
-                    break
-                stats["scanned"] += 1
-                try:
-                    ok = self._direct_external_apply_one(context, job_url, site, stats)
-                    if ok:
-                        applied_this_site += 1
-                except Exception as exc:
-                    import traceback
-                    self._log(f"[DIRECT-EXT] Apply error {job_url[:60]}: {exc}")
-                    self._log(traceback.format_exc()[-1200:])
-                    stats["failures"] += 1
-        finally:
-            page.close()
-
-    def _direct_external_try_inpage_search(self, page, keywords: str, location: str) -> None:
-        """Best-effort in-page search for sites that ignore query params and open a generic page."""
-        search_selectors = [
-            "input[type='search']",
-            "input[name*='search' i]",
-            "input[id*='search' i]",
-            "input[placeholder*='search' i]",
-            "input[placeholder*='job' i]",
-        ]
-        try:
-            for sel in search_selectors:
-                try:
-                    inp = page.locator(sel).first
-                    if inp.is_visible(timeout=1200):
-                        self._human_move_mouse_to(page, inp)
-                        self._human_pause(0.1, 0.25)
-                        inp.click(timeout=2000)
-                        self._human_pause(0.1, 0.2)
-                        query = f"{keywords} {location}".strip()
-                        for ch in query:
-                            inp.type(ch, delay=random.randint(40, 120))
-                        self._human_pause(0.15, 0.35)
-                        inp.press("Enter")
-                        try:
-                            page.wait_for_load_state("domcontentloaded", timeout=12000)
-                        except Exception:
-                            pass
-                        self._human_reading_pause(0.8, 1.5)
-                        self._log(f"[DIRECT-EXT] In-page search executed: {query}")
-                        return
-                except Exception:
-                    continue
-        except Exception:
-            pass
-
-    def _direct_external_scroll_results(self, page) -> None:
-        """Scroll down the results page naturally to load all job cards."""
-        try:
-            for _ in range(random.randint(3, 6)):
-                page.mouse.wheel(0, random.randint(300, 600))
-                time.sleep(random.uniform(0.3, 0.8))
-            # Scroll back up a little, like a human re-checking
-            page.mouse.wheel(0, -random.randint(100, 300))
-            self._human_pause(0.3, 0.7)
-        except Exception:
-            pass
-
-    def _direct_external_collect_jobs(self, page, site: dict) -> list[str]:
-        """Return a de-duplicated list of job detail/apply URLs from the search page."""
-        urls: list[str] = []
-        seen: set[str] = set()
-
-        def _is_probable_job_url(href: str) -> bool:
-            low = (href or "").lower()
-            if not low or low.startswith("javascript") or low.startswith("mailto:"):
-                return False
-            if site.get("name") == "WeWorkRemotely":
-                return "/remote-jobs/" in low and "/company/" not in low and "/listing_ads/" not in low
-            # RemoteOK frequently exposes company pages; keep only real job paths.
-            if site.get("name") == "RemoteOK":
-                return "/remote-jobs/" in low
-            if site.get("name") == "Jobicy":
-                # Keep only actual job detail URLs like /jobs/12345-slug (has digit after /jobs/)
-                import re as _re
-                return bool(_re.search(r"/jobs/\d", low))
-            blocked = (
-                "/company", "/companies", "/blog", "/about", "/privacy", "/terms",
-                "linkedin.com", "twitter.com", "facebook.com", "instagram.com"
-            )
-            return not any(b in low for b in blocked)
-
-        for selector in site["card_selectors"]:
-            try:
-                cards = page.query_selector_all(selector)
-                for card in cards:
-                    try:
-                        hrefs: list[str] = []
-
-                        # RemoteOK: prefer explicit job anchors first.
-                        if site.get("name") == "RemoteOK":
-                            try:
-                                links = card.query_selector_all("a[href*='/remote-jobs/']")
-                                for lk in links:
-                                    hrefs.append(lk.get_attribute("href") or "")
-                            except Exception:
-                                pass
-
-                        # Generic fallback: first anchor or card href.
-                        if not hrefs:
-                            link = card.query_selector("a[href]")
-                            if link:
-                                hrefs.append(link.get_attribute("href") or "")
-                            else:
-                                own_href = card.get_attribute("href") or ""
-                                if own_href:
-                                    hrefs.append(own_href)
-
-                        for href in hrefs:
-                            href = (href or "").strip()
-                            if not href or not _is_probable_job_url(href):
-                                continue
-                            if href.startswith("/"):
-                                base = page.url.split("/")[0] + "//" + page.url.split("/")[2]
-                                href = base + href
-                            if href in seen:
-                                continue
-                            seen.add(href)
-                            urls.append(href)
-                    except Exception:
-                        continue
-                if urls:
-                    break
-            except Exception:
-                continue
-
-        # WeWorkRemotely fallback: job links are often directly in anchors, not always in card wrappers.
-        if not urls and site.get("name") == "WeWorkRemotely":
-            try:
-                links = page.query_selector_all("a[href*='/remote-jobs/']")
-                for lk in links:
-                    href = (lk.get_attribute("href") or "").strip()
-                    if not href:
-                        continue
-                    if href.startswith("/"):
-                        href = f"https://weworkremotely.com{href}"
-                    low = href.lower()
-                    if "/company/" in low or "/listing_ads/" in low:
-                        continue
-                    if href not in seen:
-                        seen.add(href)
-                        urls.append(href)
-            except Exception:
-                pass
-        return urls[:20]  # cap per page
-
-    def _find_best_apply_link(self, page, site: dict) -> tuple[Any | None, str]:
-        """Find apply action using site selectors first, then robust generic fallbacks."""
-        broken_domains = ("aiok.co", "remoteok.com/l/")
-
-        def _is_broken_href(href: str) -> bool:
-            low = (href or "").lower()
-            if not low.startswith("http"):
-                return False
-            try:
-                host = low.split("/")[2]
-            except Exception:
-                return False
-            for d in broken_domains:
-                if "/" in d:
-                    if d in low:
-                        return True
-                else:
-                    if host == d or host.endswith(f".{d}"):
-                        return True
-            return False
-
-        # 1) Site-specific selectors
-        for sel in site.get("apply_btn_selectors", []):
-            try:
-                btn = page.locator(sel).first
-                if btn.is_visible(timeout=1200):
-                    href = (btn.get_attribute("href") or "").strip()
-                    if _is_broken_href(href):
-                        continue
-                    return btn, href
-            except Exception:
-                continue
-
-        # 2) Generic apply-like controls
-        generic_selectors = [
-            "a:has-text('Apply now')",
-            "a:has-text('Apply for this job')",
-            "a:has-text('Apply for this position')",
-            "a:has-text('Apply')",
-            "button:has-text('Apply now')",
-            "button:has-text('Apply')",
-            "a[href*='apply']",
-            "a[href*='careers']",
-            "a[href*='jobs']",
-        ]
-        for sel in generic_selectors:
-            try:
-                btn = page.locator(sel).first
-                if btn.is_visible(timeout=900):
-                    href = (btn.get_attribute("href") or "").strip()
-                    if _is_broken_href(href):
-                        continue
-                    return btn, href
-            except Exception:
-                continue
-
-        # 3) RemoteOK and similar boards: pick likely external outbound link.
-        try:
-            anchors = page.query_selector_all("a[href]")
-        except Exception:
-            anchors = []
-
-        blocked_domains = (
-            "remoteok.com", "weworkremotely.com", "jobicy.com", "europeremotejobs.com",
-            "linkedin.com", "twitter.com", "x.com", "facebook.com", "instagram.com", "t.me"
-        )
-        for a in anchors[:150]:
-            try:
-                href = (a.get_attribute("href") or "").strip()
-                txt = (a.inner_text() or "").strip().lower()
-                if not href:
-                    continue
-                if href.startswith("/"):
-                    continue
-                hlow = href.lower()
-                if not hlow.startswith("http"):
-                    continue
-                if any(d in hlow for d in blocked_domains):
-                    continue
-                if _is_broken_href(href):
-                    continue
-                # Prefer links with apply-related text first
-                if any(k in txt for k in ("apply", "job", "position", "career", "open role")):
-                    return None, href
-
-                    # 4) Last resort: any external link (not internal navigation) on the page
-                    for a in anchors[:150]:
-                        try:
-                            href = (a.get_attribute("href") or "").strip()
-                            if not href or href.startswith("/"):
-                                continue
-                            hlow = href.lower()
-                            if not hlow.startswith("http"):
-                                continue
-                            if any(d in hlow for d in blocked_domains):
-                                continue
-                            if _is_broken_href(href):
-                                continue
-                            return None, href
-                        except Exception:
-                            continue
-            except Exception:
-                continue
-
-        return None, ""
-
-    def _open_external_apply_target(self, context, page, apply_btn, btn_href: str, site: dict):
-        """Open apply destination from button/href and return a target page when it becomes external.
-
-        Returns:
-            tuple[target_page_or_none, note]
-        """
-        target_page = None
-        note = ""
-
-        # Normalize relative href.
-        normalized_href = (btn_href or "").strip()
-        if normalized_href.startswith("/"):
-            parts = page.url.split("/")
-            if len(parts) >= 3:
-                normalized_href = f"{parts[0]}//{parts[2]}{normalized_href}"
-
-        current_host = ""
-        try:
-            current_host = page.url.split("/")[2].lower()
-        except Exception:
-            current_host = ""
-
-        def _is_broken_host(href: str) -> bool:
-            low = (href or "").lower()
-            if not low.startswith("http"):
-                return False
-            try:
-                host = low.split("/")[2]
-            except Exception:
-                return False
-            return host == "aiok.co" or host.endswith(".aiok.co")
-
-        def _is_externalish(href: str) -> bool:
-            low = (href or "").lower()
-            if not low:
-                return False
-            if "/l/" in low or "apply" in low:
-                return True
-            if low.startswith("http"):
-                try:
-                    host = low.split("/")[2]
-                    return host != current_host
-                except Exception:
-                    return True
-            return False
-
-        # Avoid known dead redirect domains.
-        if normalized_href and _is_broken_host(normalized_href):
-            note = f"skipped broken redirect domain: {normalized_href[:80]}"
-            normalized_href = ""
-
-        # Prefer direct navigation when href likely points to outbound/apply route.
-        if normalized_href and _is_externalish(normalized_href):
-            try:
-                target_page = context.new_page()
-                self._setup_page_as_human(target_page)
-                target_page.goto(normalized_href, wait_until="domcontentloaded", timeout=18000)
-                self._human_reading_pause(0.8, 1.6)
-                # Check if redirect landed on a dead domain
-                final_url = target_page.url
-                if _is_broken_host(final_url):
-                    try:
-                        target_page.close()
-                    except Exception:
-                        pass
-                    note = f"redirect ended at dead domain: {final_url[:80]}"
-                else:
-                    return target_page, "opened apply href"
-            except Exception as exc:
-                note = f"open href failed: {exc}"
-
-        # Try click path (popup or same-tab navigation).
-        if apply_btn is not None:
-            before_url = page.url
-            try:
-                with page.expect_popup(timeout=3500) as popup_info:
-                    self._human_move_mouse_to(page, apply_btn)
-                    self._human_pause(0.1, 0.25)
-                    apply_btn.click(timeout=3500)
-                target_page = popup_info.value
-                self._setup_page_as_human(target_page)
-                target_page.wait_for_load_state("domcontentloaded", timeout=15000)
-                self._human_reading_pause(0.8, 1.6)
-                return target_page, "opened popup from apply click"
-            except Exception:
-                try:
-                    self._human_move_mouse_to(page, apply_btn)
-                    self._human_pause(0.1, 0.2)
-                    apply_btn.click(timeout=3000)
-                except Exception:
-                    pass
-
-            try:
-                page.wait_for_load_state("domcontentloaded", timeout=9000)
-            except Exception:
-                pass
-
-            after_url = page.url
-            if after_url != before_url:
-                try:
-                    after_host = after_url.split("/")[2].lower()
-                except Exception:
-                    after_host = ""
-                if after_host and after_host != current_host:
-                    return page, "navigated to external host after apply click"
-                if _is_externalish(after_url):
-                    return page, "navigated to external apply route after click"
-
-        return None, note or "no external destination opened"
-
-    def _direct_external_apply_one(self, context, job_url: str, site: dict, stats: dict) -> bool:
-        """Open one job page and attempt to apply. Returns True if submitted."""
-        page = context.new_page()
-        self._setup_page_as_human(page)
-        try:
-            page.goto(job_url, wait_until="domcontentloaded", timeout=18000)
-            # Wait for JS to render apply button
-            try:
-                page.wait_for_load_state("networkidle", timeout=10000)
-            except Exception:
-                pass
-            self._human_reading_pause(1.2, 2.8)
-
-            # Check for page errors
-            page_issue = self._detect_external_page_error(page, job_url)
-            if page_issue:
-                self._log(f"[DIRECT-EXT] Skipping â€” {page_issue}")
-                stats["skipped"] += 1
-                return False
-
-            # Check for account walls
-            wall = self._detect_external_account_wall(page)
-            if wall:
-                self._log(f"[DIRECT-EXT] Account wall on {job_url[:60]}: {wall}")
-                login_ok, login_note = self._try_external_login(page)
-                if login_ok:
-                    self._log(f"[DIRECT-EXT] {login_note}")
-                    self._human_reading_pause(0.6, 1.2)
-                else:
-                    self._log(f"[DIRECT-EXT] {login_note}")
-                    stats["skipped"] += 1
-                    return False
-
-            # Extract basic job info for logging
-            title = ""
-            company = ""
-            try:
-                title = (page.locator("h1").first.inner_text(timeout=2000) or "").strip()[:80]
-            except Exception:
-                pass
-            try:
-                company = (page.locator("[class*='company']").first.inner_text(timeout=1500) or "").strip()[:50]
-            except Exception:
-                pass
-            self._log(f"[DIRECT-EXT] Applying: {title} @ {company} | {job_url[:60]}")
-
-            apply_btn, btn_href = self._find_best_apply_link(page, site)
-
-            if not apply_btn and not btn_href:
-                self._log(f"[DIRECT-EXT] No apply button found on {job_url[:60]}")
-                stats["skipped"] += 1
-                return False
-
-            ext_page, ext_note = self._open_external_apply_target(context, page, apply_btn, btn_href, site)
-
-            if ext_page is not None:
-                # Opens an ATS site â€” use existing ATS fill helpers
-                self._current_report = {"qa_pairs": {}, "uploaded_files": [], "external_ats": {}}
-                self._log(f"[DIRECT-EXT] Apply route opened: {ext_note}")
-
-                err = self._detect_external_page_error(ext_page, ext_page.url)
-                if err:
-                    self._log(f"[DIRECT-EXT] {err}")
-                    stats["skipped"] += 1
-                    return False
-
-                wall2 = self._detect_external_account_wall(ext_page)
-                if wall2:
-                    self._log(f"[DIRECT-EXT] {wall2}")
-                    login_ok, login_note = self._try_external_login(ext_page)
-                    if login_ok:
-                        self._log(f"[DIRECT-EXT] {login_note}")
-                        self._human_reading_pause(0.6, 1.2)
-                    else:
-                        self._log(f"[DIRECT-EXT] {login_note}")
-                        stats["skipped"] += 1
-                        return False
-
-                ats = self._detect_ats(ext_page.url)
-                self._log(f"[DIRECT-EXT] ATS: {ats} | {ext_page.url[:70]}")
-                try:
-                    ok, note = self._fill_generic_external(ext_page)
-                except Exception as fill_exc:
-                    ok, note = False, f"ATS fill exception: {fill_exc}"
-                if ok:
-                    stats["submitted"] += 1
-                    self._log(f"[DIRECT-EXT] âœ“ Submitted via {ats}: {note}")
-                    return True
-                else:
-                    self._log(f"[DIRECT-EXT] âœ— Could not submit: {note}")
-                    stats["failures"] += 1
-                    return False
-            else:
-                # Inline form on the same page â€” click button and fill
-                self._current_report = {"qa_pairs": {}, "uploaded_files": [], "external_ats": {}}
-                if apply_btn is not None:
-                    self._human_move_mouse_to(page, apply_btn)
-                    self._human_pause(0.1, 0.25)
-                    apply_btn.click(timeout=3000)
-                self._human_reading_pause(0.8, 1.8)
-
-                wall3 = self._detect_external_account_wall(page)
-                if wall3:
-                    self._log(f"[DIRECT-EXT] {wall3}")
-                    login_ok, login_note = self._try_external_login(page)
-                    if login_ok:
-                        self._log(f"[DIRECT-EXT] {login_note}")
-                        self._human_reading_pause(0.5, 1.0)
-                    else:
-                        self._log(f"[DIRECT-EXT] {login_note}")
-                        stats["skipped"] += 1
-                        return False
-
-                try:
-                    ok, note = self._fill_generic_external(page)
-                except Exception as fill_exc:
-                    ok, note = False, f"Inline fill exception: {fill_exc}"
-                if ok:
-                    stats["submitted"] += 1
-                    self._log(f"[DIRECT-EXT] âœ“ Submitted inline: {note}")
-                    return True
-                else:
-                    self._log(f"[DIRECT-EXT] âœ— Inline fill failed: {note}")
-                    stats["failures"] += 1
-                    return False
-        finally:
-            try:
-                page.close()
-            except Exception:
-                pass
-
     def run_networking_campaign(self) -> dict[str, Any]:
         """Follow role-matched companies on LinkedIn.
 
@@ -5620,7 +5302,7 @@ class LinkedInAutoApplyBot:
             if count >= max_per_run:
                 break
 
-            # â”€â”€ Follow the company page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            # Ã¢â€â‚¬Ã¢â€â‚¬ Follow the company page Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
             follow_key = f"__follow__{company.lower()}"
             if follow_key not in sent:
                 try:
@@ -5813,9 +5495,9 @@ class LinkedInAutoApplyBot:
         """Click Connect on a search-result card and confirm the modal.
 
         Returns:
-            True  â€” invitation sent successfully
-            False â€” an error occurred
-            None  â€” not applicable (already connected, button absent, etc.)
+            True  Ã¢â‚¬â€ invitation sent successfully
+            False Ã¢â‚¬â€ an error occurred
+            None  Ã¢â‚¬â€ not applicable (already connected, button absent, etc.)
         """
         try:
             # 1. Find the Connect button directly on the card
@@ -5871,7 +5553,7 @@ class LinkedInAutoApplyBot:
                         item = page.query_selector(sel)
                         if item:
                             item.click(timeout=3000)
-                            connect_btn = True  # sentinel â€” modal will follow
+                            connect_btn = True  # sentinel Ã¢â‚¬â€ modal will follow
                             break
                     except Exception:
                         pass
@@ -5900,7 +5582,7 @@ class LinkedInAutoApplyBot:
                 except Exception:
                     pass
 
-            # "How do you know X?" â€” dismiss; we can't auto-categorize
+            # "How do you know X?" Ã¢â‚¬â€ dismiss; we can't auto-categorize
             for sel in [
                 "button[aria-label='Dismiss']",
                 "button[aria-label='Close']",
@@ -5914,20 +5596,20 @@ class LinkedInAutoApplyBot:
                 except Exception:
                     pass
 
-            # No modal visible â€” request likely sent inline (no extra step required)
+            # No modal visible Ã¢â‚¬â€ request likely sent inline (no extra step required)
             return True
 
         except Exception:
             return False
 
-    # â”€â”€ State helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # Ã¢â€â‚¬Ã¢â€â‚¬ State helpers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
     def _write_state(self) -> None:
         self._write_json(self.config.paths.state_path, self.state)
 
     def _reached_limit(self) -> bool:
         # Count terminal outcomes so short test runs stop quickly.
-        # "skipped" = already seen / redirected â†’ also doesn't count.
+        # "skipped" = already seen / redirected Ã¢â€ â€™ also doesn't count.
         processed = (
             self.stats["submitted"]
             + self.stats["dry_run"]
@@ -5935,3 +5617,4 @@ class LinkedInAutoApplyBot:
             + self.stats["failures"]
         )
         return processed >= self.limit
+
