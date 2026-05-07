@@ -3186,6 +3186,7 @@ class LinkedInAutoApplyBot:
         "ashby":      ("ashbyhq.com", "jobs.ashbyhq.com"),
         "smartrecruiters": ("jobs.smartrecruiters.com",),
         "bamboohr":   ("bamboohr.com",),
+        "web3career":  ("web3.career",),
     }
 
     def _detect_ats(self, url: str) -> str:
@@ -3199,7 +3200,7 @@ class LinkedInAutoApplyBot:
         """Return a description string when the external page is an error page.
         Returns None when the page looks healthy."""
         try:
-            broken_domains = {"aiok.co", "asyncok.com", "producthunt.com"}
+            broken_domains = {"aiok.co", "asyncok.com", "producthunt.com", "web3.career"}
             title = (page.title() or "").lower()
             error_titles = (
                 "not found", "404", "page not found", "job not found",
@@ -3992,6 +3993,10 @@ class LinkedInAutoApplyBot:
         url = page.url
         ats = self._detect_ats(url)
         self._log(f"[ATS] Routing to adapter: {ats}")
+
+        # Sign-up / job-aggregator walls - not real ATS forms, skip immediately
+        if ats == "web3career" or "web3.career" in url.lower():
+            return False, "Skipped: web3.career is a sign-up wall, not a real apply form"
 
         ats_map = {
             "greenhouse":      self._fill_ats_greenhouse,
