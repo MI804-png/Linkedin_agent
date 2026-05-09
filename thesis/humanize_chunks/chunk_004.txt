@@ -1,0 +1,53 @@
+The tension between model complexity and interpretability is well-documented. While sophisticated machine learning often achieves higher predictive accuracy, rule-based and transparent models provide greater organizational trust, auditability, and regulatory alignment. Many organizations are adopting hybrid approaches: transparent rule-based models as the primary accountable path, with machine learning as a comparative check. [16][19]
+
+### 2.4 Research Gap and Thesis Positioning
+
+The research literature reveals three significant gaps:
+
+1. **Integration Gap:** Most HRIS platforms address HR analytics in isolation. Cross-functional integration of HR, finance, and operations analytics remains limited in accessible solutions.
+
+2. **Transparency Gap:** Commercial platforms often prioritize predictive accuracy over model interpretability. Organizations increasingly demand auditable, explainable analytical systems.
+
+3. **Accessibility Gap:** Enterprise analytics platforms are expensive and complex, limiting their availability to smaller organizations and custom implementation contexts.
+
+This thesis addresses these gaps through a transparent, integrated analytical framework combining rule-based KPI computation with local machine learning support. By prioritizing methodological traceability and role-specific visualization, the work demonstrates that professional, auditable decision support can be implemented within academic and organizational resource constraints. [5][10][17]
+
+---
+
+# 3. SYSTEM DESIGN AND ARCHITECTURE
+
+### 3.1 Architectural Overview and Layered Design
+
+The system employs a four-layer architecture emphasizing separation of concerns and modularity:
+
+**Layer 1 – Presentation Layer:** User interfaces provided through HTML templates rendered by Flask, CSS styling for responsive design, and vanilla JavaScript for client-side interactivity. This layer handles user authentication, form input collection, dashboard rendering, and PDF export initiation.
+
+**Layer 2 – Application Layer:** Flask-based web routing, session management, request validation, and orchestration of analytical workflows. This layer enforces authentication and authorization, routes requests to appropriate business logic, and constructs response context for template rendering.
+
+**Layer 3 – Analytics Layer:** Core computational engine implementing KPI normalization, rule-based scoring, weighted aggregation, and prediction interpretation. This layer contains deterministic algorithms and is decoupled from web concerns, enabling independent testing and validation.
+
+**Layer 4 – Persistence Layer:** SQLite database management including user account storage, analysis history archiving, and metadata curation. This layer ensures data consistency and enables longitudinal trend analysis.
+
+This layering improves maintainability, testability, and extensibility. The analytics layer can be validated independently of web routing; the persistence layer can evolve toward stronger databases (PostgreSQL) without affecting analytical logic.
+
+### 3.2 Data Model and Input Dimensions
+
+The system organizes inputs into three thematic domains:
+
+**Domain 1 – Leadership and People:**
+- Leadership Years: accumulated tenure in leadership roles
+- Digital Maturity Score: organizational digital capability (1-10 scale)
+- Retention Percentage: proportion of workforce remaining year-over-year
+- Churn Percentage: voluntary and involuntary separation rate
+
+**Domain 2 – Risk and Operations:**
+- Process Documentation Score: formalization of operational procedures
+- Key-Person Dependency Score: concentration of critical skills
+- Debt-to-Equity Ratio: financial leverage indicator
+- Process Fragility Score: operational risk from dispersed responsibilities
+
+**Domain 3 – Financial Performance:**
+- Profit Margin: EBIT or net profit as percentage of revenue
+- Growth Rate: year-over-year revenue growth percentage
+- Cash-on-Hand Months: operational runway based on burn rate
+- Employee Count: organizational scale

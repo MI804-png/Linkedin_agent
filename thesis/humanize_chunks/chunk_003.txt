@@ -1,0 +1,49 @@
+### 1.4 Scope and Boundaries
+
+**Included Scope:**
+
+- Rule-based KPI computation engine with explicit formulas and normalization logic
+- Local machine learning model (gradient boosting regressor) for comparative probability estimation
+- Role-based dashboard generation (CEO, HR, Finance, Operations)
+- SQLite-based local persistence for analysis history and user records
+- PDF report generation for archived analyses
+- CSV batch ingestion workflow with row-level validation
+- Demo authentication and authorization framework
+- Web-based user interface using Flask, HTML, CSS, and JavaScript
+
+**Out of Scope:**
+
+- Real-time or live HRIS API integrations with external HR platforms
+- Cross-company benchmarking against external industry datasets
+- Cloud-scale or distributed deployment infrastructure
+- Advanced machine learning techniques (e.g., deep learning, time-series forecasting)
+- Multi-currency or multi-language support
+- Production-grade enterprise security hardening
+
+This scope is appropriate for thesis research, enabling thorough validation of the analytical model and system architecture while remaining implementable within thesis time and resource constraints.
+
+---
+
+# 2. LITERATURE REVIEW AND RELATED WORK
+
+### 2.1 Human Resource Information Systems (HRIS) and Decision Support
+
+Modern HRIS platforms evolved from administrative transaction processors toward strategic decision support tools. Early systems focused on payroll, benefits administration, and compliance reporting. Contemporary systems increasingly incorporate workforce analytics capabilities, including headcount planning, compensation analysis, succession planning, and retention prediction. [2][9]
+
+Decision Support Systems (DSS) research emphasizes that analytical systems are most effective when they augment expert judgment rather than replacing it. Simon's bounded rationality framework highlights that organizational decisions involve incomplete information, multiple objectives, and resource constraints—conditions where transparent, auditable models significantly improve decision quality. [18][25]
+
+Contemporary HRIS implementations increasingly recognize the strategic value of integrated people analytics. Becker, Huselid, and Ulrich's work demonstrates that organizations viewing human capital as a strategic asset achieve superior financial performance. However, realizing this strategic value requires analytical frameworks that connect HR metrics to business outcomes. [2]
+
+### 2.2 People Analytics and Organizational Risk Assessment
+
+People analytics research identifies several high-value predictive dimensions: turnover/retention patterns, leadership quality and succession readiness, workforce stability, and employee engagement. Fitz-Enz and Mattox demonstrate that analytics-driven HR decisions produce measurable improvements in retention, productivity, and organizational performance. [8][12]
+
+Organizational risk literature emphasizes that vulnerability concentrates in specific areas: key-person dependency, process fragility, financial leverage, and workforce churn. The Basel III framework and subsequent organizational risk models recognize that comprehensive risk assessment requires integration across finance, operations, and human capital dimensions. [1][15]
+
+However, most commercial analytics platforms either focus narrowly on HR metrics or operate in functional silos. Integrated risk assessment frameworks remain underdeveloped, particularly in contexts where methodological transparency is required. [3][4]
+
+### 2.3 Transparency and Explainability in Business Intelligence
+
+A growing body of research addresses the limitation of black-box machine learning in organizational decision contexts. Explainable AI (XAI) literature argues that high-stakes decisions—including those affecting people, capital allocation, and strategy—require interpretable models. [11][27]
+
+Davenport and Harris's foundational work on analytics-driven organizations emphasizes that organizations competing on analytics require investment not only in technology but in organizational capability for analytics interpretation and governance. [6]

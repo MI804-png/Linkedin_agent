@@ -1,0 +1,108 @@
+6. **digital_score**
+Purpose: Digital capability readiness indicator.
+Validation: Numeric range 1-10.
+Transformation: Linear map to 0-100 scale.
+
+7. **retention_pct**
+Purpose: Workforce stability measure.
+Validation: Numeric 0-100.
+Transformation: Direct mapping.
+
+8. **churn_pct**
+Purpose: Attrition pressure measure.
+Validation: Numeric 0-100.
+Transformation: Inverse mapping to represent risk escalation.
+
+9. **dte_ratio**
+Purpose: Leverage exposure indicator.
+Validation: Numeric 0-5.
+Transformation: Linear pressure mapping with upper cap.
+
+10. **doc_score**
+Purpose: Process documentation maturity.
+Validation: Numeric 0-100.
+Transformation: Direct mapping.
+
+11. **dep_score**
+Purpose: Key-person dependency concentration.
+Validation: Numeric 0-100.
+Transformation: Direct mapping into scaling risk contribution.
+
+12. **margin_pct**
+Purpose: Profitability resilience.
+Validation: Numeric -50 to 100.
+Transformation: Shifted linear mapping to 0-100 interval.
+
+13. **growth_pct**
+Purpose: Expansion momentum.
+Validation: Numeric -50 to 100.
+Transformation: Shifted linear mapping with clipping.
+
+14. **cash_months**
+Purpose: Liquidity runway.
+Validation: Numeric 0-60.
+Transformation: Scaled to 0-100 with upper cap.
+
+**H.2 Derived KPI Definitions**
+
+1. **LRS (Leadership Readiness Score)**
+Interpretation: Ability of leadership and people systems to sustain change.
+Expected Usage: HR and CEO readiness reviews.
+
+2. **SRS (Scaling Risk Score)**
+Interpretation: Probability of operational stress under growth conditions.
+Expected Usage: Operations and HR risk monitoring.
+
+3. **FSC (Financial Stability Composite)**
+Interpretation: Resilience of margin, growth, leverage, and liquidity profile.
+Expected Usage: Finance governance and quarterly monitoring.
+
+4. **OHI (Organizational Health Index)**
+Interpretation: Integrated holistic indicator across all principal dimensions.
+Expected Usage: Cross-functional strategic decision support.
+
+**H.3 Risk Band Communication Rules**
+
+- Scores in stable range use explanatory language focused on maintenance and incremental improvement.
+- Scores in moderate range use language focused on prioritized corrective action within one planning cycle.
+- Scores in high-risk range trigger explicit mitigation recommendations with urgency cues.
+- Narrative wording remains deterministic for identical input profiles.
+
+**H.4 Recommendation Prioritization Logic**
+
+The recommendation block is generated through a deterministic priority map:
+
+1. Identify lowest-performing principal component(s)
+2. Identify largest negative trend indicator (if prior snapshot exists)
+3. Select role-relevant intervention templates
+4. Rank interventions by expected impact and implementation urgency
+5. Present 3-5 concise actions with rationale
+
+**H.5 Interpretation Guardrails**
+
+- KPI values are decision-support signals, not autonomous decisions.
+- Model outputs should be reviewed with contextual domain knowledge.
+- For high-stakes interventions, managers should combine KPI output with qualitative evidence.
+- ML estimate is secondary and cannot override deterministic governance rules.
+
+### Appendix I: Maintenance Playbook and Operational Checklists
+
+This appendix defines routine maintenance tasks required to sustain deterministic behavior, data integrity, and operational reliability in local deployment.
+
+**I.1 Daily Operational Checklist**
+
+1. Confirm application boot without route errors.
+2. Verify login for at least one seeded role account.
+3. Run one smoke analysis and confirm KPI rendering.
+4. Export one PDF and verify file opens correctly.
+5. Check database file accessibility and write permissions.
+
+**I.2 Weekly Quality Checklist**
+
+1. Review validation notes from recent CSV uploads.
+2. Identify repeated input quality issues and update guidance.
+3. Re-run deterministic reproducibility check with fixed sample.
+4. Validate trend calculations against known historical records.
+5. Archive generated reports older than retention threshold.
+
+**I.3 Monthly Governance Checklist**

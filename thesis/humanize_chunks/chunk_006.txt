@@ -1,0 +1,90 @@
+Importantly, the ML layer does not replace deterministic KPI logic. It remains advisory and comparative, supporting managerial judgment rather than automating high-stakes decisions affecting organizational strategy or personnel.
+
+---
+
+# 4. IMPLEMENTATION AND SYSTEM DEVELOPMENT
+
+### 4.1 Technology Stack and Dependencies
+
+**Programming Environment:**
+- Python 3.11.1 for application and analytics runtime
+- Virtual environment (.venv) for dependency isolation and reproducibility
+
+**Web Framework:**
+- Flask for HTTP routing, session management, and template rendering
+- Werkzeug for request handling and password hashing utilities
+
+**Data and Analytics:**
+- NumPy for numeric array operations and linear algebra
+- Pandas for structured data manipulation and analysis
+- scikit-learn (Gradient Boosting Regressor) for machine learning support
+
+**Persistence:**
+- SQLite (standard library) for embedded relational database
+- JSON serialization for flexible payload storage
+
+**Report Generation:**
+- ReportLab for deterministic PDF generation from analysis snapshots
+
+**Frontend:**
+- HTML5 for semantic page structure
+- CSS3 for responsive layout and visual design
+- Vanilla JavaScript (no framework dependencies) for lightweight interactivity
+- Jinja2 templates (via Flask) for server-side rendering
+
+**DevOps and Reproducibility:**
+- requirements.txt for locked dependency versioning
+- .gitignore for version control hygiene
+- README.md for operational documentation
+
+The technology stack emphasizes accessibility, reproducibility, and minimal operational complexity. No external cloud services, proprietary software, or advanced frameworks are required.
+
+### 4.2 Core Modules and Responsibilities
+
+**app.py** – Flask entry point and route orchestration
+- Handles HTTP request routing for login, analysis, history, dashboard, and export
+- Manages session-based authentication and user context
+- Constructs template rendering context
+- Delegates business logic to specialized modules
+
+**analysis_engine.py** – Deterministic KPI computation
+- Input validation and boundary clamping
+- Normalization of domain-specific inputs to comparable scales
+- Weighted computation of LRS, SRS, FSC, OHI
+- Generation of qualitative risk bands and narrative recommendations
+- Independent of Flask dependencies; testable via direct Python import
+
+**ml_engine.py** – Machine learning support
+- Synthetic training data generation from KPI engine outputs
+- Gradient Boosting Regressor training and serialization
+- Prediction and confidence interval computation
+- Feature importance approximation for interpretability
+
+**data_store.py** – Persistence and data access
+- SQLite schema initialization and migration
+- User authentication query patterns
+- Analysis record insertion and retrieval
+- Role-aware filtering for history queries
+- Trend computation from historical records
+
+**reporting.py** – PDF generation pipeline
+- Analysis result aggregation from stored snapshots
+- PDF document construction with ReportLab
+- Table formatting, narrative generation, and metadata inclusion
+- Deterministic reproduction from stored analysis identifiers
+
+**section_data.py** – Thesis section content management
+- Structured data model for thesis document sections
+- Metadata for figure numbering and cross-references
+- Support for thesis PDF generation
+
+**generate_documentation.py** – Thesis PDF generation
+- Markdown parsing and conversion to PDF format
+- Page enumeration and numbering logic
+- Style application for thesis formatting compliance
+
+This modular design minimizes coupling, improves testability, and enables evolution toward more sophisticated functionality without architectural redesign.
+
+### 4.3 Functional Workflow and Data Processing Pipeline
+
+**Manual Analysis Workflow:**

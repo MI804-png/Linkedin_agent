@@ -1128,6 +1128,7 @@ def build_config_for_user(
         willing_to_work_onsite=getattr(p, "willing_to_work_onsite", False) or False,
         willing_to_work_remote=getattr(p, "willing_to_work_remote", True) if getattr(p, "willing_to_work_remote", None) is not None else True,
         current_job_title=getattr(p, "current_job_title", "") or "",
+        networking_title=getattr(p, "networking_title", "") or "",
         years_management_experience=getattr(p, "years_management_experience", "0") or "0",
         highest_education=getattr(p, "highest_education", "") or "",
         field_of_study=getattr(p, "field_of_study", "") or "",
@@ -1149,6 +1150,7 @@ def build_config_for_user(
         workplace_type=(p.workplace_type or "all"),
         apply_type=(apply_type_override or p.apply_type or "easy_apply"),
         max_applications_per_run=p.max_applications,
+        max_network_per_run=max(1, min(100, int(getattr(p, "max_network_companies_per_run", 20) or 20))),
         posted_days_ago=p.posted_days_ago,
         headless=not watch_browser,
         watch_hold_seconds=120 if watch_browser else 0,
@@ -1621,7 +1623,34 @@ def run_networking_for_user_async(user_id: int, *, watch_browser: bool = False) 
             with app.app_context():
                 config = build_config_for_user(user_id, watch_browser=watch_browser)
                 bot = LinkedInAutoApplyBot(config, dry_run=False, resume=False)
-                _active_bots[run_id] = bot
+                # Compatibility shim: some bot builds may miss the networking helper.
+                # Inject a safe fallback so networking can still run.
+                if not hasattr(bot, "_get_networking_target_companies"):
+                    def _fallback_network_targets() -> list[str]:
+                        role_context = " ".join([
+                            str(getattr(bot.config.profile, "current_job_title", "") or "").lower(),
+                            " ".join(str(k).lower() for k in (getattr(bot.config.settings, "keywords", []) or [])),
+                        ])
+                        software_tokens = [
+                            "software", "engineer", "developer", "backend", "frontend",
+                            "full stack", "fullstack", "web", "application",
+                        ]
+                        software_companies = [
+                            "Google", "Microsoft", "Amazon", "Meta", "Apple",
+                            "Netflix", "Uber", "Spotify", "LinkedIn", "Salesforce",
+                            "Oracle", "IBM", "SAP", "ServiceNow", "Workday",
+                        ]
+                        general_companies = [
+                            "Siemens", "Bosch", "Ericsson", "Nokia", "T-Systems",
+                            "Deutsche Telekom", "Accenture", "Capgemini", "Deloitte",
+                            "KPMG", "PwC", "Infosys", "Cognizant", "NTT Data",
+                            "EPAM", "Endava", "Randstad", "Manpower", "Hays",
+                        ]
+                        if any(token in role_context for token in software_tokens):
+                            return software_companies + general_companies
+                        return software_companies
+
+                    bot._get_networking_target_companies = _fallback_network_targets  # type: ignore[attr-defined]
                 result = bot.run_networking_campaign()
                 sent = result.get("stats", {}).get("sent", 0)
                 skipped = result.get("stats", {}).get("skipped", 0)

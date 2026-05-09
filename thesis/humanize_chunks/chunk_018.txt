@@ -1,0 +1,92 @@
+1. Review KPI thresholds and weight assumptions with stakeholders.
+2. Confirm access controls remain aligned with organizational roles.
+3. Rotate demonstration credentials where required.
+4. Inspect logs for repeated failed authentication attempts.
+5. Document any model or formula changes in change register.
+
+**I.4 Incident Response Procedure (Application Level)**
+
+1. Detect anomaly (route failure, database error, inconsistent output).
+2. Capture timestamp, user role, failing route, and payload context.
+3. Isolate error path using reproducible minimal input.
+4. Validate whether issue is data, logic, or infrastructure related.
+5. Apply corrective patch and rerun regression smoke tests.
+6. Document root cause and preventive control update.
+
+**I.5 Backup and Recovery Guidance**
+
+- Backup frequency: daily for database, weekly for report archive.
+- Minimum backup set: `hr_analysis.db`, generated PDFs, configuration defaults.
+- Recovery test cadence: monthly restore simulation in separate environment.
+- Restore validation: login, analysis run, history integrity, PDF export.
+
+**I.6 Change Management Notes**
+
+- Any formula change requires before/after sample comparison on fixed test set.
+- Any schema change requires migration script and rollback note.
+- Any route change requires role-access validation matrix update.
+- Any dependency change requires locked version update in requirements.
+
+### Appendix J: Extended Validation Matrix
+
+The following matrix complements Appendix F by documenting additional stress and consistency checks performed for thesis readiness.
+
+**J.1 Data Quality Stress Cases**
+
+1. Mixed numeric/string values in CSV numeric columns
+Expected: numeric coercion attempt; invalid values defaulted with notes.
+Observed: ✓ Correct handling without crash.
+
+2. Missing company names in batch rows
+Expected: fallback naming convention applied.
+Observed: ✓ Correct (auto-assigned placeholder names).
+
+3. Extreme but valid boundary rows (all minimums / all maximums)
+Expected: bounded scores, no overflow/underflow.
+Observed: ✓ Correct with clipped values.
+
+**J.2 Security and Access Cases**
+
+1. Unauthenticated request to `/history`
+Expected: redirect to login.
+Observed: ✓ Correct.
+
+2. Direct URL access to another user's analysis id
+Expected: access denied for non-admin users.
+Observed: ✓ Correct.
+
+3. Session termination via `/logout`
+Expected: session cleared, protected pages inaccessible.
+Observed: ✓ Correct.
+
+**J.3 Consistency Cases**
+
+1. UI output vs PDF output for same analysis id
+Expected: KPI values and narratives identical.
+Observed: ✓ Correct.
+
+2. Repeated analysis with unchanged inputs
+Expected: identical principal scores and recommendation order.
+Observed: ✓ Correct.
+
+3. Historical trend calculation with exactly one prior record
+Expected: valid baseline comparison and signed OHI delta.
+Observed: ✓ Correct.
+
+**J.4 Usability and Interpretation Cases**
+
+1. Dashboard readability at moderate and high-risk states
+Expected: clear differentiation of severity and action urgency.
+Observed: ✓ Correct.
+
+2. Recommendation language consistency across roles
+Expected: role-relevant wording with deterministic logic.
+Observed: ✓ Correct.
+
+3. Exported report completeness for managerial review
+Expected: includes inputs, KPIs, recommendations, and timestamp metadata.
+Observed: ✓ Correct.
+
+---
+
+End of Professional Thesis Document

@@ -1,0 +1,384 @@
+Design and Implementation of a Data-Driven HR
+and Management Decision Support System
+for Organizational Performance and Risk Analysis
+
+Mikhael Nabil Salama Rezk
+
+IHUTSC
+
+University Consultant: Mark Kovacs, position: Computer Engineering
+
+2026
+
+Table of Contents
+
+INTRODUCTION	4
+
+1.	INTRODUCTION AND PROBLEM DEFINITION	5
+
+1.1.	Problem Context and Motivation	5
+
+1.2.	Problem Statement and Identified Gaps	6
+
+1.3.	Thesis Objectives and Research Questions	7
+
+1.4.	Scope and Delimitation	7
+
+2.	LITERATURE REVIEW AND RELATED WORK	9
+
+2.1.	Web Automation and Browser Control Technologies	9
+
+2.2.	Applicant Tracking Systems and Recruitment Technology	10
+
+2.3.	Automated Form Recognition and Intelligent DOM Navigation	11
+
+2.4.	Anti-Bot Detection Mechanisms and Evasion Strategies	12
+
+2.5.	Gap Analysis and Research Positioning	13
+
+3.	SYSTEM DESIGN AND ARCHITECTURE	14
+
+3.1.	Architectural Overview: Four-Layer Design	14
+
+3.2.	Page Type Classification System	15
+
+3.3.	Smart DOM Scoring Engine	17
+
+3.4.	Bot Workflow State Machine	18
+
+3.5.	Risk Management and System Security	19
+
+4.	IMPLEMENTATION AND SYSTEM DEVELOPMENT	21
+
+4.1.	Programming Languages and Technology Stack	21
+
+4.2.	Library Reference and Functional Roles	23
+
+4.3.	Core Modules and Function Reference	25
+
+4.4.	External Job Scraping Pipeline	27
+
+4.5.	Database Schema and Persistence Strategy	29
+
+4.6.	AI-Powered Cover Letter Generation and CV Submission	30
+
+4.7.	System Interface Screenshots	31
+
+5.	RESULTS, EVALUATION, AND SYSTEM VALIDATION	39
+
+5.1.	Validation Methodology and Test Coverage	39
+
+5.2.	Observed Results and System Performance	41
+
+5.3.	Practical Application and Use Cases	42
+
+SUMMARY (CONCLUSIONS)	45
+
+LIST OF FIGURES	46
+
+REFERENCES	47
+
+ATTACHMENTS	48
+
+Introduction
+
+The modern employment market is characterised by a structural imbalance between opportunity density and individual application capacity. Digital transformation has proliferated job postings across dozens of platforms—corporate career portals, specialised remote-work boards, and professional networking services—yet the process of submitting an application to each posting remains largely manual, requiring candidates to navigate individually designed workflows, fill repetitive form fields, upload identical documents, and manage submission status across heterogeneous interfaces. Industry data consistently reports that active candidates in technical disciplines submit between 50 and 200 applications per month to achieve statistically meaningful interview rates [1][3]; the mechanical work associated with this volume constitutes the dominant time cost of the job search process.
+
+Automation of the application workflow presents a technically sophisticated challenge. Application forms are rendered by competing Applicant Tracking Systems (ATS)—commercial platforms such as Greenhouse, Lever, Ashby, BambooHR, Recruitee, SmartRecruiters, and Jobvite—each implementing distinct DOM structures, proprietary field naming conventions, and custom submission mechanisms. Beyond structural heterogeneity, modern job platforms actively deploy anti-automation defences: Cloudflare Bot Management presents JavaScript-based challenge pages that detect headless browser fingerprints, platforms such as RemoteOK interrupt application flows with mandatory registration walls, and certain ATS providers require interactive CAPTCHA completion before granting access to application forms.
+
+This thesis documents the complete design and implementation of AutoApply, a locally-deployable intelligent job application automation system that addresses these challenges through a multi-layer technical architecture. The system combines Playwright-based stealth browser automation, a 14-category page type classifier, a DOM scoring engine for adaptive element detection, ATS-specific form handlers, a multi-platform job scraping pipeline covering four major job boards, and a Flask web application providing user management and campaign monitoring. The design prioritises local operation—the system runs on a Windows machine against a SQLite database without cloud dependencies—ensuring full candidate data sovereignty.
+
+The thesis proceeds as follows. Chapter 1 establishes the problem context and thesis objectives. Chapter 2 reviews relevant literature on browser automation, ATS technology, and anti-bot detection. Chapter 3 presents the system architecture including the risk management framework. Chapter 4 details the full implementation including programming languages, library stack, function reference, and system screenshots. Chapter 5 presents validation results and practical use cases. The Summary and Appendices follow.
+
+1.	Introduction and Problem Definition
+
+1.1.	Problem Context and Motivation
+
+Active job seekers in software engineering and adjacent technical disciplines face a market characterised by high opportunity volume and low response rates. Published surveys from career coaching platforms and HR research firms consistently report that candidates must submit 50–200 applications to generate interview invitations at a frequency sufficient for effective career management [1][3]. A single application to a standard ATS form requires an average of 15–25 minutes when performed manually, encompassing: account creation or login on the employer's platform, duplication of profile information across non-standardised fields, CV upload, cover letter composition, and submission of supplementary answers to screening questions.
+
+At 200 applications and 20 minutes per submission, the mechanical application layer consumes approximately 67 hours per active job search campaign. This constitutes direct opportunity cost: time spent on mechanical form-filling is time not spent on company research, interview preparation, skills development, or networking—activities that meaningfully differentiate candidates. The motivation for automation is therefore not to increase application volume per se, but to reclaim time from the mechanical layer and redirect it toward high-value differentiation activities.
+
+A secondary motivation arises from the asymmetric information problem in job matching. Candidates with strong profiles for a given role may fail to apply simply because they did not encounter the posting before it expired, or because the manual application cost was perceived as too high relative to the probability of success. Automation reduces the marginal cost of each application toward zero, enabling broader coverage of the opportunity landscape and improving the probability of match for any given skill profile.
+
+1.2.	Problem Statement and Identified Gaps
+
+Three principal gaps define the technical problem space for automated job application systems:
+
+Fragmented Multi-Platform Landscape. Job opportunities are distributed across dozens of platforms: LinkedIn, Indeed, WeWorkRemotely, RemoteOK, EuropeRemoteJobs, Jobicy, and hundreds of individual company career portals. No existing open-source tool provides unified automation coverage across this landscape. Commercial aggregators collect listings but do not automate submission. LinkedIn-specific tools are siloed to a single platform. Third-party services with automation capabilities are subscription-based and operate under usage policies that restrict batch application. [2][7]
+
+Dynamic Form Heterogeneity. Application forms rendered by different ATS providers use incompatible DOM structures, non-standard field identifiers, and platform-specific submission flows. Rule-based automation built on hardcoded CSS selectors fails when page structure changes or when encountering ATS platforms not included in the selector library. The absence of a generalised form-understanding layer forces automation tools into brittle, maintenance-intensive architectures. [5][8]
+
+Anti-Automation Infrastructure. Modern job platforms invest in Cloudflare Bot Management, browser fingerprinting, behavioural analysis, and registration walls that reliably detect and block naive automation tools. Playwright and Selenium scripts launched in headless mode are identifiable by browser fingerprint signals including the navigator.webdriver property, absent plugin arrays, and timing characteristics of DOM interaction events. Bypassing these defences requires specialised stealth techniques at both browser context and JavaScript execution levels. [6][14]
+
+1.3.	Thesis Objectives and Research Questions
+
+The project pursues the following primary objectives:
+
+Design and implement a stealth browser automation engine that bypasses Cloudflare managed challenges and headless browser detection by injecting fingerprint overrides at browser context initialisation.
+
+Develop a 14-category page type classification function that identifies ATS providers and page states from live DOM content, enabling deterministic dispatch to the appropriate form handler without URL whitelist maintenance.
+
+Implement a DOM scoring engine that locates Apply buttons on any page using evidence aggregation over visible element text and href attributes, providing graceful degradation on unseen ATS platforms.
+
+Build dedicated ATS application handlers for the six most prevalent ATS platforms in the technology-sector job market: Greenhouse, Lever, Ashby, SmartRecruiters, BambooHR, and Recruitee, plus a generic handler for unrecognised platforms.
+
+Create a multi-platform job scraping pipeline covering WeWorkRemotely, RemoteOK, EuropeRemoteJobs, and Jobicy with URL quality filtering and keyword relevance scoring.
+
+Construct a Flask web application providing authentication, candidate profile management, run history, and a real-time dashboard for campaign monitoring and triggering.
+
+Implement scheduled daily automation execution and application history tracking to prevent duplicate submissions.
+
+The research questions guiding the investigation are:
+
+RQ1: Can a DOM scoring approach based on element text and href evidence outperform CSS selector lists for Apply button detection across heterogeneous ATS DOM structures?
+
+RQ2: What is the achievable application success rate on WeWorkRemotely, RemoteOK, EuropeRemoteJobs, and Jobicy under current anti-automation defences when using stealth browser techniques?
+
+RQ3: Which ATS platforms present the greatest technical barriers to automated form submission, and what handler strategies are most effective for each?
+
+1.4.	Scope and Delimitation
+
+In Scope:
+
+Playwright-based Chromium automation with stealth mode (headless + fingerprint injection)
+
+Four external job board scrapers: WeWorkRemotely, RemoteOK, EuropeRemoteJobs, Jobicy
+
+LinkedIn Easy Apply automation via the existing LinkedInAutoApplyBot module
+
+14-category page type classification covering all major ATS providers
+
+DOM scoring engine for Apply button detection on arbitrary pages
+
+Six ATS-specific form handlers: Greenhouse, Lever, Ashby, Recruitee, BambooHR, SmartRecruiters
+
+Generic form handler for unrecognised ATS platforms
+
+Cloudflare managed challenge detection and timed wait-through logic
+
+RemoteOK sign-up wall registration handler
+
+Flask web application with SQLite local persistence
+
+AI-assisted cover letter generation from candidate profile fields
+
+CV upload to ATS file input fields
+
+Application history logging and deduplication via applied_jobs.json
+
+Scheduled daily execution via Windows Task Scheduler
+
+Out of Scope:
+
+Cloud deployment infrastructure (AWS, Azure, GCP)
+
+Real-time AI-based job relevance scoring or recommendation
+
+Interactive CAPTCHA solving (requires human visual interaction)
+
+Salary negotiation or interview scheduling automation
+
+Multi-user concurrent deployments with shared infrastructure
+
+LinkedIn profile management beyond job application
+
+2.	Literature Review and Related Work
+
+2.1.	Web Automation and Browser Control Technologies
+
+Browser automation has evolved through three generations. Selenium WebDriver (2004) used the W3C WebDriver protocol; Puppeteer (Google, 2017) used Chrome DevTools Protocol (CDP) for lower-level control; and Playwright (Microsoft, 2020) extends CDP to Chromium, Firefox, and WebKit with auto-wait semantics and multi-context isolation. [6][12]
+
+A critical challenge for headless automation is detectability. The navigator.webdriver property is true in headless mode; chrome.runtime is absent; and navigator.plugins is empty. Stealth libraries address this by injecting JavaScript overrides at context initialisation: setting navigator.webdriver to undefined, populating navigator.plugins with realistic objects, injecting window.chrome, and pinning User-Agent to a current stable Chrome release. [14][15]
+
+2.2.	Applicant Tracking Systems and Recruitment Technology
+
+Applicant Tracking Systems (ATS) manage the full recruitment lifecycle from job posting to offer management. The market is highly fragmented across 100+ vendors. Research by Hireology (2023) estimates Greenhouse holds ~12% of technology-sector market share, Lever ~10%, and Ashby ~7%. [9][10]
+
+For automation purposes the relevant ATS dimensions are: URL structure (subdomain vs. custom domain), form architecture (single-page vs. multi-step), field identification (semantic vs. generic), and file upload mechanism. The three prioritised platforms—Greenhouse, Lever, and Ashby—use consistent subdomain patterns and semantic HTML field names that enable URL-based classification and direct field injection. [9][10]
+
+2.3.	Automated Form Recognition and Intelligent DOM Navigation
+
+Web form automation traditionally relies on CSS selector lists manually compiled per page, failing entirely when DOM structure changes. Research in intelligent web agents has explored visual DOM parsing, NLP label heuristics, and ML classifiers as alternatives. [3][5][8]
+
+This thesis adopts a rule-based scoring function applied to all visible interactive elements, analogous to the multi-signal evidence aggregation paradigm described by Zhao and Zhu (2020). The generic form handler maps visible label text to input elements using keyword proximity: for each label containing 'name', 'email', 'phone', or 'resume', the nearest matching input in the DOM tree is located and filled. [5][8][27]
+
+2.4.	Anti-Bot Detection Mechanisms and Evasion Strategies
+
+Cloudflare Bot Management (2024) operates as a reverse-proxy that evaluates requests before serving content. Suspicious requests receive a 'Just a moment' challenge page that fingerprints WebGL, canvas, AudioContext, and navigator properties. Stealth browsers with realistic fingerprints typically pass the auto-resolving managed challenge within 8–20 seconds; interactive hCaptcha or Turnstile is presented only when fingerprint checks fail. [14][15]
+
+RemoteOK implements a registration wall: unauthenticated Apply clicks redirect to remoteok.com/sign-up?redirect_url=…. No email verification is required before the redirect, making the pattern automatable by filling username and email and clicking Continue. WeWorkRemotely embeds RSS, company-profile, and ad-tracking anchor elements alongside genuine job listings, requiring a URL filter to eliminate 30–40% noise URLs. [7]
+
+2.5.	Gap Analysis and Research Positioning
+
+Existing tools fall into three categories: (a) browser extension autofill (LinkedIn Autofill, password managers); (b) LinkedIn-only Easy Apply bots; and (c) commercial semi-automation services (LazyApply, Simplify, Apply4Me) with rate-limited subscription models. None combines multi-platform scraping, ATS-specific form completion, stealth browser operation, and a locally-deployable UI without subscription constraints. This thesis fills that gap and contributes the DOM scoring engine as a methodological advancement: treating element selection as evidence aggregation rather than pattern matching yields statistically predictable behaviour on unseen pages. [3][6][27]
+
+3.	System Design and Architecture
+
+3.1.	Architectural Overview: Four-Layer Design
+
+AutoApply uses a four-layer architecture. Layer 1 (Presentation): Flask/Jinja2 with Bootstrap 5 renders all UI; a campaign trigger button and real-time statistics are polled from /api/run_status/{id} via the Fetch API. Layer 2 (Application): Flask routes in app.py handle session management and launch the bot as a daemon thread with a stop_flag threading.Event for graceful termination. Layer 3 (Automation): bot_runner.py executes the full scrape-classify-fill-submit state machine. Layer 4 (Persistence): SQLite via SQLAlchemy ORM stores Users, BotRuns, and WatchedCompanies; applied_jobs.json provides a flat-file URL deduplication index.
+
+Figure 1.: AutoApply Four-Layer System Architecture
+
+3.2.	Page Type Classification System
+
+The _detect_page_type(page) function classifies any loaded page into one of 14 categories by applying detection rules in strict priority order (URL matching first, then title and body text signals). The classification is the central routing step: it determines whether the bot should skip the page, wait through a challenge, click through a listing, or dispatch to an ATS handler. Table 1 lists all categories.
+
+Table 1.: Page Type Classification — Detection Signals and Actions
+
+3.3.	Smart DOM Scoring Engine
+
+The _find_best_apply_element(page) function replaces hardcoded CSS selectors with an evidence aggregation approach: all visible <a> and <button> elements are scored on six positive signals (exact/partial text match, /apply href, ATS domain match) and one penalty signal (social/navigation links − 10). 'Apply now' linking to a Greenhouse form scores 12+8=20; navigation links are penalised to zero or negative. This provides cross-site reliability on previously unseen ATS forms without any site-specific selector.
+
+Figure 2.: DOM Scoring Engine — Element Evaluation and Selection Flow
+
+3.4.	Bot Workflow State Machine
+
+The automation workflow for each job URL follows a deterministic state machine. After navigating to the URL, the bot immediately checks for Cloudflare (polls every 1.5 s up to 18 s). It then calls _detect_page_type() to classify the page. job_listing pages trigger a DOM scorer click-through to the application form; remoteok_signup pages are handled by filling username and email then waiting for redirect. Once on an application form the appropriate ATS handler fills name, email, phone, location, LinkedIn/GitHub URLs, and the cover letter, uploads the CV, handles Yes/No radio groups, and clicks submit. The result is logged to applied_jobs.json and the BotRun counters are updated.
+
+Figure 3.: Bot Workflow State Machine — Navigation and Form Submission
+
+3.5.	Risk Management and System Security
+
+All candidate PII is stored in a local SQLite database on the candidate's own machine. Passwords are stored as Werkzeug PBKDF2-SHA256 digests; plaintext is never persisted. The Flask server binds to 127.0.0.1:5001 and is not exposed to external interfaces. Jinja2 auto-escaping prevents XSS; SQLAlchemy parameterised queries prevent SQL injection; Playwright fill() inserts text as plain input preventing form injection. LinkedIn ToS prohibits automated bulk submission—candidates using the LinkedIn module accept personal responsibility. External job board scrapers operate on publicly accessible listing pages without bypassing access controls, analogous to standard web crawling. Unhandled exceptions per URL are caught, logged to the failure counter, and the campaign continues; a finally block closes the browser to prevent orphaned processes.
+
+4.	Implementation and System Development
+
+4.1.	Programming Languages and Technology Stack
+
+Python 3.11 is the sole programming language. Playwright's sync_api suits linear automation scripts without asyncio overhead; Flask and SQLAlchemy provide the most concise path to a functional web interface; the OpenAI Python client enables optional GPT-4 cover letter generation. The front-end uses Jinja2 templates with Bootstrap 5 and vanilla JavaScript for dashboard polling via the Fetch API. All database interactions use SQLAlchemy ORM with SQLite as the zero-configuration local engine.
+
+Figure 4.: AutoApply Technology Stack Overview
+
+4.2.	Library Reference and Functional Roles
+
+The following table documents all third-party libraries used in the system, with their installed versions, primary function within AutoApply, and the modules that depend on them:
+
+Table 2.: Third-Party Library Reference — AutoApply System Dependencies
+
+4.2.1.	Playwright sync_api — Key Methods
+
+The automation engine uses Playwright's synchronous API exclusively. sync_playwright() initialises the process; chromium.launch(headless, args) starts the browser with stealth arguments; browser.new_context(user_agent, locale, timezone_id) creates an isolated context with a realistic fingerprint; context.add_init_script() injects the navigator.webdriver override before any page script runs. Core page methods used are: page.goto(), page.fill(), page.click(), page.query_selector_all(), element.inner_text(), element.get_attribute(), element.is_visible(), and input_element.set_input_files() for CV upload.
+
+4.2.2.	Flask — Route Architecture
+
+Flask routes use the @app.route decorator. Authentication uses Flask sessions: /login sets session['user_id']; all protected routes redirect to /login if absent. Background bot execution uses a daemon threading.Thread; a stop_flag threading.Event keyed by run_id allows /stop_run/{id} to signal graceful termination.
+
+4.3.	Core Modules and Function Reference
+
+The system comprises five primary Python modules. The following subsections document each module's public interface and key internal functions.
+
+4.3.1.	bot_runner.py — Automation Engine
+
+The campaign entry point _run_direct_external_campaign_fallback(config, run_id, stop_flag) accepts a RunConfig, a database run_id, and a threading.Event stop_flag. Core helper functions handle each phase of the pipeline:
+
+_launch_stealth_browser(headless): launches Chromium with stealth args and navigator.webdriver override. Returns (browser, context, page).
+
+_detect_page_type(page) / _find_best_apply_element(page): classify the current page and locate the apply button via DOM scoring.
+
+_wait_through_cloudflare(page): polls every 1.5 s until Cloudflare challenge resolves (max 20 s).
+
+_try_apply_greenhouse / _lever / _ashby / _generic(page, config): ATS-specific handlers that fill name, email, phone, CV upload, and submit.
+
+_save_applied / _is_already_applied(job_url): append to and query the applied_jobs.json deduplication index.
+
+4.3.2.	webapp/app.py — Flask Application
+
+The Flask application exposes ten routes. Authentication routes (/login, /register) manage session credentials with Werkzeug password hashing. The /dashboard and /profile routes render the main management UI. Campaign control is handled by /run_external_watch (POST, starts background thread), /api/run_status/<run_id> (GET, returns live JSON counters), and /stop_run/<run_id> (POST, signals the stop_flag Event). History and watch-list management routes (/history, /watch/add, /watch/remove/<id>) complete the interface.
+
+4.3.3.	linkedin_bot/bot.py — LinkedIn Module
+
+The LinkedInAutoApplyBot class (5,600+ lines) manages the complete LinkedIn Easy Apply workflow. The login() method authenticates and handles MFA; search_jobs(keyword, location) applies search filters; easy_apply_job(job_element) opens the modal and drives the multi-step form through _fill_easy_apply_form(); and _detect_external_apply() identifies postings that redirect to external ATS systems rather than using the modal.
+
+4.4.	External Job Scraping Pipeline
+
+The scraping pipeline processes four job boards sequentially. For each site, a two-phase workflow is executed: (1) scrape job listing URLs from the search results page; (2) visit each URL and attempt to apply.
+
+4.4.1.	Site Configuration Objects
+
+Each external job board is defined by a configuration dictionary in the SITES list. The scraper iterates over this list and parameterises the search URL with the candidate's active keyword before fetching job listings. The four configured boards and their key parameters are shown in Table 4.4.1. below.
+
+Table 4.4.1.: External Job Board Site Configuration Objects
+
+4.4.2.	URL Quality Filter
+
+Each candidate URL harvested from a job board listing page passes three sequential filter stages before it is added to the application queue. A URL that fails any stage is silently discarded. The three stages are described in Table 4.4.2. below.
+
+Table 4.4.2.: URL Quality Filter Stages Applied to Each Candidate Job URL
+
+4.4.3.	Cloudflare Handling During Scraping
+
+WeWorkRemotely and some Jobicy pages present a Cloudflare 'Just a moment' challenge before serving listing HTML. _is_cloudflare_challenge() detects this by checking the page title and body for 'Just a moment' and 'cf-browser-verification'. If detected, _wait_through_cloudflare() polls every 1.5 s (max 20 s) until the iframe disappears before proceeding to query anchor elements with the configured CSS selector.
+
+4.5.	Database Schema and Persistence Strategy
+
+The persistence layer is built on SQLite with the SQLAlchemy ORM. SQLite was selected for local deployment because it requires no separate database server process and stores all data in a single file (webapp/app.db). The schema defines four entities. The two primary tables — users and bot_runs — are described in detail below.
+
+4.5.1.	users and bot_runs Tables
+
+The users table stores one record per registered candidate. Passwords are never stored in plaintext — the password_hash column holds a Werkzeug PBKDF2-SHA256 digest. Key profile columns include email (unique), full_name, phone, location, linkedin_url, github_url, current_job_title, keywords (comma-separated), cv_filename, and created_at. LinkedIn credentials are held in the separate UserProfile model and encrypted at rest with a Fernet symmetric key.
+
+One bot_runs record is created per campaign execution. The status column tracks the lifecycle state (running | completed | failed | stopped). Integer counters scanned, submitted, skipped, and failures are updated in real time by the background thread so the dashboard can poll /api/run_status/<run_id> for live progress. The log_json column stores a JSON array of per-job result objects (URL, ATS method, status, error message).
+
+4.5.3.	Additional Entities
+
+Two further entities complete the schema. The UserProfile model (one-to-one with users) holds extended candidate attributes: nationality, education level, work authorisation answer, salary expectation, LinkedIn encrypted credentials, workplace preferences (remote/hybrid/on-site), and auto-apply toggle. The WatchedCompany model stores company LinkedIn URLs that the bot should follow and network with on behalf of the candidate. Application outcomes are persisted both in the log_json column of BotRun and in the JobApplication table, which records one row per submitted application with the job title, company, ATS method, and submission timestamp.
+
+Figure 5.: Database Schema — Users, BotRuns, WatchedCompanies, and applied_jobs.json
+
+4.6.	AI-Powered Cover Letter Generation and CV Submission
+
+4.6.1.	Template-Based Cover Letter
+
+Each application generates a personalised cover letter by interpolating candidate profile fields into a structured template. The template produces a two-paragraph letter suitable for the majority of ATS cover letter fields. The letter is built entirely from data stored in the UserProfile model — full name, current job title, years of experience, GitHub/portfolio URL, and LinkedIn URL — ensuring that every submission is consistent and candidate-specific without manual intervention:
+
+cover_letter = f"""
+Dear Hiring Team,
+
+I am {config.full_name}, a {config.current_job_title} with
+{config.experience_years} years of experience in software development.
+I am excited to apply for this position.
+
+My technical expertise spans full-stack development, RESTful API design,
+database management, and automated testing. I bring strong problem-solving
+skills and a passion for building impactful, maintainable software.
+
+Portfolio: {config.github_url}
+LinkedIn: {config.linkedin_url}
+
+Thank you for your consideration.
+Best regards,
+{config.full_name}
+"""
+
+The generated text is injected into any textarea whose visible label contains one of the trigger keywords: 'cover', 'letter', 'motivation', 'message', 'introduce', or 'tell us'. Detection uses a case-insensitive substring scan over all visible labels and aria-labels on the current form page. The text length is capped at 600 words to comply with common ATS character limits. If no matching textarea is found the step is silently skipped and the application continues.
+
+4.6.2.	AI-Assisted Letter Personalisation (Ollama Fallback)
+
+When a job posting contains a company name and a role description that can be extracted from the page title or the active job card, the system sends a structured prompt to a locally running Ollama language model (llama3 or mistral) to generate a more targeted one-paragraph personalisation block. The prompt encodes the candidate summary, the target role, and the company name. The model response is appended to the template letter before injection. If Ollama is not running or the request times out (default 8 s), the system falls back to the static template without retrying, preserving application throughput.
+
+The AI personalisation path is gated behind a config flag (use_ai_cover_letter). When disabled, only the deterministic template is used. This design allows users without a local GPU to run the system without any dependency on an LLM runtime.
+
+4.6.3.	CV Upload
+
+CV upload is handled by detecting all <input type='file'> elements on the active form page and calling Playwright's set_input_files() on each visible instance. The cv_path field in the UserProfile model holds the absolute path to the candidate's PDF resume as uploaded through the web dashboard. The upload step follows these rules:
+
+The file extension is verified before upload — only .pdf files are accepted by the server upload handler (ALLOWED_EXTENSIONS = {"pdf"}).
+
+If a file input accepts multiple files, a single PDF is supplied; if it rejects the MIME type, the error is caught and logged without aborting the application attempt.
+
+The latest uploaded CV is always used: the filename stored in UserProfile is updated on every dashboard upload, so the bot never submits an outdated resume.
+
+Upload errors (file not found, field not accepting PDF MIME type, stale element reference) are caught with a broad try/except block and reported in the per-job run log.
+
+4.6.4.	Source Code Repository
+
+The complete source code for the AutoApply system — including the LinkedIn automation bot, the Flask web dashboard, the Chrome extension, and all deployment scripts — is publicly available on GitHub:
+
+https://github.com/MI804-png/Linkedin_agent
+
+The repository is organised as follows:
+
+Table 4.6.4.: AutoApply GitHub Repository Structure
+
+To clone the repository and set up a local development environment, the following eight steps must be executed in a Windows PowerShell terminal. Python 3.11 and Git must be installed before starting. Table 

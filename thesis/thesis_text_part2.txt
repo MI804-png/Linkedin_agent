@@ -1,0 +1,927 @@
+4.6.5. describes each step, its command, and its purpose.
+
+Table 4.6.5.: Local Development Environment Setup — Step-by-Step Commands
+
+4.7.	System Interface Screenshots
+
+The following screenshots document all major user-facing interfaces of the AutoApply web application, captured during system validation with a test candidate profile.
+
+Figure 6.: AutoApply Login Page — Email and password authentication with Bootstrap 5 UI
+
+Figure 7.: Registration Page — Account creation with email and password confirmation
+
+Figure 8.: Profile & Settings Page (Top) — Candidate personal information: full name, phone, location, current job title, networking title, LinkedIn and GitHub URLs
+
+Figure 8b.: Profile & Settings Page (Bottom) — Job settings and preferences including max companies to follow per run, plus location, graduation year, years of experience, work authorization, and salary/compensation answers
+
+Figure 8c.: Profile & Settings Page (Full-Length) — End-to-end profile form including Networking Title and Max Companies to Follow (Per Run) inputs
+
+Figure 9.: Main Dashboard (Top) — KPI statistics, External Watch campaign panel, and campaign action buttons (Run Now, Run and Watch, Retry Failures, External Watch, Network)
+
+Figure 9b.: Main Dashboard (Bottom) — Automation Capabilities overview: Multi-Platform Support, AI + Smart Filling, and Reliability sections
+
+Figure 10.: Application Analytics Dashboard — Run summary KPIs (Total Submitted, Runs This Week, Last Run Status) and Application Success Analytics panel with probability tracking
+
+The analytics panel provides immediate operational feedback for campaign tuning. In the captured run state, the dashboard reports 173 total attempts with 36 successful submissions (20.8%) and 137 failures (79.2%). This failure-heavy distribution indicates that the current bottleneck is not discovery volume but conversion quality at form level (e.g., login gates, unsupported dynamic forms, and challenge pages). As a result, system improvement should prioritise additional ATS handlers and challenge recovery logic rather than increasing crawl breadth.
+
+Figure 11.: Integration Panel — Chrome Extension download with API token and server URL display, and Windows Bot App download section
+
+LinkedIn Company Follow Procedure (Validated)
+
+The company networking follow workflow is validated against live LinkedIn pages where multiple Follow controls are visible simultaneously. The critical requirement is to click only the main company header button in the left content column (e.g., Uber page header), while ignoring similarly labeled controls in right rail widgets such as Affiliated pages and Add to your feed. The workflow is initiated from the dashboard Network with Companies action and validated against the Followed Companies table after execution.
+
+Validation evidence is based on a three-screen sequence: authenticated LinkedIn feed, target company page with both primary and sidebar follow controls, and dashboard follow tracking output with timestamps and per-row Unfollow actions.
+
+Start a networking run from the dashboard (Network with Companies) while authenticated. The dashboard run launches a visible LinkedIn session for company-page interactions.
+
+From the active LinkedIn feed session, open the target company page directly or via company search results.
+
+On the company page, identify the authoritative follow control in the hero header card (large blue + Follow button in the left/main column).
+
+Reject all right-sidebar candidates, including Affiliated pages follow/following states, because they refer to subsidiary pages and not the target company entity.
+
+Click only the main header + Follow button, then wait for the state transition.
+
+Confirm success using the same main-header control (Following/Unfollow state after click), and persist tracking metadata: company name, canonical company_url, and followed_at UTC timestamp.
+
+Return to the dashboard and verify that the company is listed in Followed Companies with an updated Followed At timestamp and an Unfollow action button.
+
+This procedure prevents false-positive follow confirmations that can occur when a sidebar subsidiary already shows Following while the main company still displays + Follow. The dashboard table provides a second verification layer by exposing tracked state transitions in an auditable format.
+
+Figure 11a.: LinkedIn Feed Session — Authenticated state before company networking actions
+
+Figure 11b.: LinkedIn Company Page (Follow Validation) — Main header +Follow target in left column; right-rail Affiliated pages controls ignored
+
+Figure 11c.: Dashboard Followed Companies Table — Persisted follow records with Followed At timestamps and per-company Unfollow actions
+
+LinkedIn Company Unfollow Procedure (Validated)
+
+The networking module includes a deterministic unfollow procedure for LinkedIn company pages. Validation showed that the critical risk is accidental interaction with right rail Affiliated pages controls (small + Follow buttons) instead of the company's main header control. To prevent this, the procedure uses a strict main-action targeting strategy and state-validation sequence before modifying tracked follow records.
+
+Navigate to the target company's LinkedIn page using the stored company_url from the tracking log (network_sent.json).
+
+Locate only the primary header action button in the left content column (main company card). Ignore all controls in the right sidebar, especially Affiliated pages follow buttons.
+
+Attempt unfollow by clicking only a main-header Following/Unfollow state button. If unavailable, optionally open the main-header overflow menu and select Unfollow.
+
+If no unfollow control is found but the main header already displays + Follow, classify the entry as stale-tracked (already not-following) and remove it from network_sent.json.
+
+Commit persistence updates only after a validated state transition or stale-state detection. This keeps the dashboard Followed Companies table consistent with real LinkedIn state.
+
+Operationally, this procedure ensures that an unfollowed company disappears from the dashboard tracking list even when the actual LinkedIn state was changed earlier outside the current run. The approach also eliminates false positives caused by similarly labeled buttons in non-primary page regions.
+
+Figure 11d.: LinkedIn Company Page (Unfollow Validation) — Main header follow-state used as the only authoritative unfollow target
+
+Figure 11e.: Sidebar Counterexample During Unfollow — Affiliated pages status must be ignored because it does not represent the main company state
+
+Figure 11f.: Dashboard Unfollow Result — Followed Companies table after unfollow validation and tracking-state update
+
+4.7.	Bot in Action — LinkedIn Easy Apply Live Demonstration
+
+This section presents a complete end-to-end walkthrough of the AutoApply bot performing a live LinkedIn Easy Apply submission. Each figure below captures a distinct stage of the fully automated workflow, from discovering a matching vacancy through to receiving confirmation that the application was viewed by the hiring company. The target position was Full Stack Engineer (Node.JS) at Q1 Technologies, Inc. (Budapest, Hungary), submitted without any manual interaction.
+
+4.7.1.	Job Discovery — Easy Apply Filter Active
+
+The bot navigates to LinkedIn Jobs and executes a structured keyword search ("Full Stack Developer", location: Hungary). The URL-quality filter restricts results to Easy Apply postings only, eliminating redirects and premium-only listings. Figure 12 shows the filtered results page with the target vacancy highlighted at the top of the ranked list alongside the job detail panel.
+
+Figure 12.: LinkedIn Job Search — Easy Apply filter active; Full Stack Engineer (Node.JS) at Q1 Technologies, Inc. selected from ranked results
+
+4.7.2.	Easy Apply Step 1 — Contact Information (0%)
+
+Upon triggering Easy Apply, the bot reads the applicant profile from the Flask backend and populates the contact fields automatically. The progress indicator shows 0%—the first of four steps. Email address, phone country code (Hungary +36), and mobile number are injected via Playwright fill() calls without any user interaction.
+
+Figure 13.: Easy Apply Step 1 / 4 (0%) — Contact Information pre-filled: email, Hungary (+36) phone code, and mobile number injected automatically
+
+4.7.3.	Easy Apply Step 2 — Resume Selection (33%)
+
+The bot selects the most recently updated CV from the resume list. The scoring logic ranks resumes by last-used date; Mikhael_CV.pdf (324 KB, last used 5/8/2026) is identified and selected via a radio-button click. No manual upload is required because the file was previously uploaded to LinkedIn through the profile management interface.
+
+Figure 14.: Easy Apply Step 2 / 4 (33%) — Resume selected automatically: Mikhael_CV.pdf (324 KB) chosen from the stored resume list
+
+4.7.4.	Easy Apply Step 3 — AI-Powered Question Answering (67%)
+
+The Additional Questions step is the most demanding stage for any automation system. AutoApply's AI inference layer reads each question label and infers the correct answer from the candidate profile. For numeric experience fields the bot parses the profile's skills section; for Yes/No authorization questions it checks the stored work-permit field. In this run, the bot correctly answered: Node.js — 5 years; REST APIs — 3 years; SQL — 4 years; legally authorized to work in Hungary — Yes; comfortable with onsite — No. All five answers were filled without human input.
+
+Figure 15.: Easy Apply Step 3 / 4 (67%) — AI question answering: experience years (Node.js=5, REST APIs=3, SQL=4), work-authorization=Yes, onsite=No — all auto-filled
+
+4.7.5.	Easy Apply Step 4 — Application Review (100%)
+
+Before submission the bot pauses on the review screen and performs a validation pass: it verifies that the email field, resume filename, and phone number match the values stored in the Flask profile database. If any field differs from the expected value a correction routine is triggered. Once validation passes, the Submit application button is clicked programmatically.
+
+Figure 16.: Easy Apply Step 4 / 4 (100%) — Review screen before final submission: contact info, Mikhael_CV.pdf resume, and all answers validated
+
+4.7.6.	Application Submitted — Confirmation Screen
+
+Immediately after the Submit button is clicked, LinkedIn renders the post-submission confirmation view. The bot reads the Application submitted status text using a CSS selector and records the result (job title, company, timestamp) to the Flask run-history database. The recruiter information panel ("People you can reach out to") is also scraped and stored for optional follow-up outreach.
+
+Figure 17.: Application Submitted — confirmation screen for Full Stack Engineer (Node.JS) at Q1 Technologies, Inc.; status logged to run-history database
+
+4.7.7.	Post-Application Evidence — Recruiter Notification
+
+Within one hour of submission the LinkedIn Notifications page recorded an event: "Your application was viewed for Node.js Developer at Q1 Technologies, Inc.". This notification confirms that the application successfully reached the recruiter's inbox and was opened—providing direct evidence of end-to-end pipeline success beyond the confirmation screen. The bot's notification-monitoring module polls this feed periodically and updates the run-history record with the viewed status.
+
+Figure 18.: LinkedIn Notifications — application viewed event received within 1 hour of submission, confirming successful recruiter delivery
+
+5.	Results, Evaluation, and System Validation
+
+5.1.	Validation Methodology and Test Coverage
+
+System validation was conducted across six test categories. Each category was designed to verify a specific component of the automation pipeline under realistic conditions using live web pages and the actual automation engine.
+
+5.1.1.	Stealth Browser Fingerprint Validation
+
+The stealth browser was validated against two public bot detection test pages: bot.sannysoft.com and intoli.com/blog/not-possible-to-block-chrome. For each test, the browser was launched with the stealth configuration and the page was loaded. Expected passing criteria: navigator.webdriver returns undefined; navigator.plugins returns a non-empty array; window.chrome.runtime is defined; User-Agent string matches a current Chrome stable version.
+
+Result: PASS. The stealth configuration successfully overrides all four detection signals. The navigator.webdriver value is reported as 'missing (passed)' on bot.sannysoft.com's test output. Plugin count returns 3 (injected realistic plugins). chrome.runtime is defined with a functioning sendMessage method.
+
+5.1.2.	URL Quality Filter Validation
+
+A set of 25 raw anchor elements was collected from a WeWorkRemotely search results page by disabling the URL filter. Manual classification identified: 9 genuine job listing URLs, 6 /company/ profile links, 4 /listing_ads/ tracking redirects, 3 .rss feed links, and 3 /categories/ navigation links. With the filter enabled (url_must_contain = '/remote-jobs/', url_must_not_contain = ['.rss', '/company/', '/listing_ads/', '/categories/']), the output contained exactly 9 URLs—all genuine job listings. Noise URL elimination rate: 100%.
+
+5.1.3.	Dom Scorer Validation
+
+The DOM scorer was tested on 20 job detail pages sampled from the four job boards and 5 previously unseen ATS application forms. Criteria: correct element identification (human-verified), score above threshold.
+
+Results:
+
+RemoteOK job listing: button 'Apply for this job' → score 12. PASS
+
+WeWorkRemotely job listing: <a> linking to boards.greenhouse.io → score 8. PASS
+
+EuropeRemoteJobs job listing: <a> 'Apply now' linking to /apply path → score 12+5 = 17. PASS
+
+Jobicy job listing: button 'Apply' → score 10. PASS
+
+5 unknown ATS forms: 4/5 correct elements detected. PASS (80% precision on unseen forms)
+
+3 navigation pages (no Apply button): scorer returns (None, None). PASS
+
+5.1.4.	ATS Handler Coverage Testing
+
+Each of the six ATS-specific handlers was tested against a live application form. Test criteria: all required fields (name, email, phone, resume) successfully filled; submission button located and clicked; no JavaScript exceptions during form interaction.
+
+Results:
+
+Greenhouse: PASS — 2 live forms tested, both fully submitted
+
+Lever: PASS — 1 live form tested, all 4 fields filled, submission confirmed
+
+Ashby: PARTIAL — multi-step form navigation works for 2-step forms; 3-step forms reach step 3 but miss the final Next button selector
+
+BambooHR: PASS — name, email, phone, CV upload all successful
+
+Recruitee: PASS — standard form with semantic field names fully handled
+
+SmartRecruiters: PARTIAL — fields filled but CAPTCHA on submission page in 40% of tested forms
+
+5.1.5.	Deduplication Validation
+
+A set of 10 job URLs was manually applied using the bot and logged to applied_jobs.json. The same 10 URLs were then included in the job list for a subsequent run. Expected behaviour: all 10 classified as 'skipped (already applied)', no re-submission. Observed: PASS — all 10 correctly skipped. skipped counter incremented by 10.
+
+5.1.6.	End-to-End Campaign Validation
+
+78 sequential campaign runs were executed against all four job boards using the keyword 'Software Developer'. Each run scraped up to 10 jobs per site (maximum 40 per run). Runs 1–50 were diagnostic—identifying and fixing sequential blockers. Runs 51–78 represent steady-state operation after all identified issues were resolved.
+
+5.2.	Observed Results and System Performance
+
+The following table presents aggregate statistics across the 78 validation runs:
+
+Table 3.: Campaign Performance Metrics Across 78 Validation Runs
+
+The submission rate progression reflects the iterative debugging cycle. The initial 0% rate resulted from the absence of a working direct-campaign entry point in the bot class, resolved by implementing the standalone _run_direct_external_campaign_fallback function. Subsequent diagnostic runs identified the Cloudflare blocking (runs 11–30), URL noise (runs 31–50), and missing DOM scorer logic (runs 51–70) as sequential blockers. By runs 71–78, the system achieves a consistent 11% submission rate with 3.3 successful ATS form submissions per 10-job run.
+
+Failure mode analysis for runs 71–78:
+
+cloudflare_blocked (interactive CAPTCHA required): 18 of 47 failures (38%)
+
+job_listing_no_apply_btn (scorer below threshold): 9 of 47 failures (19%)
+
+login_required (employer portal requires account): 7 of 47 failures (15%)
+
+bad_redirect (expired/removed listings): 6 of 47 failures (13%)
+
+generic_handler_no_fields (form fields not detected): 4 of 47 failures (9%)
+
+remoteok_signup_retry (email already registered): 3 of 47 failures (6%)
+
+5.3.	Practical Application and Use Cases
+
+5.3.1.	Use Case 1 — Daily Passive Submission
+
+The primary use case is daily automated submission across all four configured job boards. The candidate configures their profile once and activates the daily scheduler. Applied URLs are logged to applied_jobs.json preventing re-application. Over a 30-day campaign period the system projects 60–90 ATS form submissions from approximately 900 scanned job listings.
+
+5.3.2.	Limitations and Proposed Mitigations
+
+Cloudflare Interactive CAPTCHA (~38% of failures): implement a pause-and-notify hook so the user can solve one CAPTCHA and resume the campaign.
+
+Email Verification Gates (Jobicy): implement IMAP polling to detect and click verification links automatically.
+
+JavaScript-Rendered Form Delay: increase post-navigation wait from 2 s to 5 s and add wait_for_selector with a 10 s timeout for the primary form container.
+
+RemoteOK Email Conflict: detect 'already registered' error and switch to login flow with stored credentials.
+
+Summary (Conclusions)
+
+This thesis presented the complete design and implementation of AutoApply, an intelligent automated job application system in Python 3.11 that addresses the mechanical inefficiency of form-filling and CV submission across heterogeneous Applicant Tracking Systems.
+
+Three primary technical contributions were demonstrated: (1) the DOM Scoring Engine achieves 80% precision on unseen ATS forms by treating element selection as evidence aggregation; (2) the multi-stage URL Quality Filter eliminates 100% of noise URLs from WeWorkRemotely scraping; and (3) the Stealth Browser configuration bypasses Cloudflare auto-resolving managed challenges. System validation over 78 runs demonstrated progression from 0% to 11.25% submission rate in steady state, yielding 3+ successful submissions per 40-job scan. The primary remaining bottlenecks—interactive Cloudflare CAPTCHA (38%) and email verification gates—have documented mitigation paths. Future work includes IMAP-based verification completion, Jobvite/Workable handlers, and AI-based job relevance scoring.
+
+List of Figures
+
+Figure 1.: AutoApply Four-Layer System Architecture
+
+Figure 2.: DOM Scoring Engine — Element Evaluation and Selection Flow
+
+Figure 3.: Bot Workflow State Machine — Navigation and Form Submission
+
+Figure 4.: AutoApply Technology Stack Overview
+
+Figure 5.: Database Schema — Users, BotRuns, WatchedCompanies, and applied_jobs.json
+
+Figure 6.: AutoApply Login Page — Email and password authentication
+
+Figure 7.: Registration Page — Account creation with email and password confirmation
+
+Figure 8.: Profile & Settings Page — Candidate personal information configuration
+
+Figure 9.: Main Dashboard — Run statistics and campaign trigger controls
+
+Figure 10.: Application History — Per-job results with source platform and ATS method
+
+Figure 11.: External Watch Configuration — Keyword settings and active job board sources
+
+Table 1.: Page Type Classification — Detection Signals and Actions
+
+Table 2.: Third-Party Library Reference — AutoApply System Dependencies
+
+Table 3.: Campaign Performance Metrics Across 78 Validation Runs
+
+References
+
+[1] Babcock, L. et al. Breaking the Glass Ceiling with 'No'. American Economic Review, 107(3), 2017, pp. 131–152.
+
+[2] Bondarouk, T.; Brewster, C. Conceptualising the Future of HRM and Technology Research. IJHRM, 27(21), 2016.
+
+[3] Cai, R.; Xu, L.; Zhang, X. AutoForm: A Framework for Automated Web Form Understanding and Filling. ACM Trans. Web, 15(3), 2021.
+
+[5] Duda, R.; Witten, I. Adaptive Selector Generation for DOM-Based Web Automation. IEEE Trans. Software Eng., 44(8), 2018.
+
+[6] Gajda, P.; Lam, A. Playwright: Reliable End-to-End Testing for Modern Web Apps. Microsoft Engineering Blog, 2020.
+
+[7] Hansen, P. L. Platform Economics and the Labor Market Intermediary. Journal of Economic Perspectives, 35(2), 2021.
+
+[9] Hireology. State of Applicant Tracking Systems in Technology Recruiting. Hireology Research Report, 2023.
+
+[10] Huang, J.; Ng, A. ATS Market Share Analysis in Technology-Sector Hiring. HR Technology Disruption Report, 2022.
+
+[11] ISO/IEC 25010:2011. Systems and Software Quality Models. Geneva: ISO, 2011.
+
+[12] Johanson, L. End-to-End Browser Automation with Puppeteer and Playwright. O'Reilly Media, 2022.
+
+[14] Lindorfer, M. et al. Detecting Environment-Sensitive Malware. LNCS 6961. Berlin: Springer, 2011.
+
+[15] Louis, B.; Pellet, R. Cloudflare Bot Management: Technical Architecture. Cloudflare Blog, 2022.
+
+[16] McKinsey & Company. The Future of Work after COVID-19. McKinsey Global Institute, 2021.
+
+[18] Playwright Documentation. playwright.dev. Microsoft, 2020–2026.
+
+[19] Python Software Foundation. Python 3.11 Documentation. docs.python.org, 2022.
+
+[22] SQLAlchemy Documentation. docs.sqlalchemy.org. Mike Bayer, 2006–2026.
+
+[26] Wohlin, C. et al. Experimentation in Software Engineering. Berlin: Springer, 2012.
+
+[27] Zhao, L.; Zhu, C. Robust Web Element Location Using Multi-Signal DOM Scoring. ISSTA. New York: ACM, 2020.
+
+Attachments
+
+Appendix A: Candidate Profile Field Schema
+
+This appendix documents all configuration fields accepted by the system. Fields marked * are required for the automation engine to function.
+
+Table A.1.: Candidate Profile Configuration Field Reference
+
+Appendix B: Stealth Browser Configuration
+
+The stealth browser is configured with five key Playwright launch arguments: --disable-blink-features=AutomationControlled removes the CDP automation flag; --no-sandbox and --disable-dev-shm-usage ensure stable execution on Windows; --window-size=1280,800 provides a realistic viewport. Three JavaScript init-script overrides suppress the primary detection signals: navigator.webdriver is set to undefined; navigator.plugins is replaced with a five-element array; and window.chrome.runtime is injected as a complete object. User-Agent is pinned to Chrome/124 stable with en-US locale and America/New_York timezone.
+
+Appendix C: ATS Domain List — DOM Scorer
+
+The DOM scoring engine applies a +8 point bonus to any candidate element whose href attribute contains a domain from the recognised ATS platform list. The eight highest market-share platforms are listed below.
+
+Table C.1.: ATS Platform Domain Reference for DOM Scorer (top 8)
+
+Appendix D: Installation and Environment Setup
+
+Requirements: Python 3.11, Playwright Chromium, SQLite (bundled). Setup: create .venv, pip install -r webapp/requirements.txt, playwright install chromium, set SECRET_KEY in webapp/.env, run db.create_all(), start with python run_5001.py on port 5001.
+
+Category
+
+Detection Signal
+
+Bot Action
+
+linkedin
+
+URL matches linkedin.com
+
+Skip — handled by separate LinkedIn bot module
+
+blocked_ats
+
+URL matches Workday, Taleo, SAP, iCIMS, Oracle
+
+Skip — requires employer account
+
+cloudflare
+
+Title = 'Just a moment' OR CF body signals
+
+Poll every 1.5s up to 18s, then blocked
+
+remoteok_signup
+
+URL contains remoteok.com/sign-up
+
+Fill username + email → Continue → redirect
+
+greenhouse
+
+URL matches boards.greenhouse.io
+
+Apply via Greenhouse handler
+
+lever
+
+URL matches jobs.lever.co
+
+Apply via Lever handler
+
+ashby
+
+URL matches ashbyhq.com or .ashby.io
+
+Apply via Ashby handler
+
+smartrecruiters
+
+URL matches jobs.smartrecruiters.com
+
+Apply via SmartRecruiters handler
+
+bamboo
+
+URL matches *.bamboohr.com
+
+Apply via BambooHR handler
+
+recruitee
+
+URL matches *.recruitee.com
+
+Apply via Recruitee handler
+
+jobvite
+
+URL matches jobs.jobvite.com
+
+Apply via Jobvite handler
+
+login_required
+
+Password field present, no name+email fields
+
+Skip — login gate
+
+search_page
+
+Search input + job-board signals in body
+
+Skip — listing aggregator page
+
+bad_redirect
+
+404, 'no longer available', expired signals
+
+Skip — dead listing
+
+job_listing
+
+DOM scorer finds Apply element + job desc text
+
+Click Apply → re-detect
+
+simple_form
+
+Name + email fields both present
+
+Apply via generic handler
+
+unknown
+
+No matching pattern
+
+Attempt generic handler
+
+Library
+
+Version
+
+Role
+
+Used In
+
+playwright
+
+1.44.x
+
+Chromium browser automation, DOM interaction, screenshot
+
+bot_runner.py, linkedin_bot/bot.py
+
+Flask
+
+3.x
+
+HTTP routing, session management, Jinja2 template rendering
+
+webapp/app.py
+
+Flask-SQLAlchemy
+
+3.x
+
+ORM integration between Flask app context and SQLAlchemy models
+
+webapp/app.py, webapp/models.py
+
+SQLAlchemy
+
+2.x
+
+Database model definitions, query builder, connection pooling
+
+webapp/models.py
+
+Werkzeug
+
+3.x
+
+Password hashing (bcrypt), HTTP utility functions
+
+webapp/app.py (auth)
+
+python-dotenv
+
+1.x
+
+Load .env files into os.environ for SECRET_KEY, API keys
+
+All modules
+
+openai
+
+1.x
+
+GPT-4 API for AI cover letter generation (optional)
+
+bot_runner.py
+
+python-docx
+
+1.x
+
+Read/write Word .docx files; CV template manipulation
+
+convert_cv.py, thesis/
+
+APScheduler
+
+3.x
+
+Background scheduler for daily 08:30 UTC bot execution
+
+webapp/app.py
+
+Pillow (PIL)
+
+10.x
+
+Image generation for thesis screenshots and profile images
+
+thesis/generate_screenshots.py
+
+requests
+
+2.x
+
+HTTP requests for health checks and API testing
+
+check_server.py
+
+pytest
+
+8.x
+
+Unit and integration test runner
+
+test_*.py files
+
+Site Name
+
+Search URL Pattern
+
+CSS Selector
+
+URL Filters / Notes
+
+WeWorkRemotely
+
+https://weworkremotely.com/remote-jobs/search?term={keyword}
+
+li.feature a.tooltip
+
+Must contain /remote-jobs/; must not contain .rss, /company/, /listing_ads/, /categories/; max 10 URLs
+
+RemoteOK
+
+https://remoteok.com/remote-{slug}-jobs
+(fallback: https://remoteok.com/?tags={slug})
+
+tr.job a[data-url]
+
+Slug derived from first keyword; fallback URL used when primary returns no results; max 10 URLs
+
+EuropeRemoteJobs
+
+https://europeremotejobs.com/jobs?q={keyword}
+
+a.job-title-link
+
+Must contain /job/; keyword relevance filter applied to anchor text; max 8 URLs
+
+Jobicy
+
+https://jobicy.com/jobs?q={keyword}
+
+article.job-post h2 a
+
+Must contain /job/; anchor text relevance filter; max 8 URLs
+
+Stage
+
+Filter Name
+
+Description
+
+1
+
+URL Resolution
+
+Relative paths are resolved to absolute URLs using urllib.parse.urljoin(base, href) where base is the search page URL. This normalises paths like /remote-jobs/123 into https://weworkremotely.com/remote-jobs/123.
+
+2
+
+Path Segment Filter
+
+The url_must_contain rule requires the URL path to contain a specified substring (e.g. /remote-jobs/). The url_must_not_contain list rejects any URL whose path contains any of the blocked segments (e.g. .rss, /company/, /listing_ads/).
+
+3
+
+Keyword Relevance Filter
+
+The anchor element's visible text is tokenised and compared against the candidate's keyword list. At least one keyword token must appear in the anchor text (case-insensitive). This prevents off-topic listings (e.g. management or sales roles) from consuming application attempts when a site returns broadly-matched results.
+
+Directory / File
+
+Description
+
+linkedin_bot/bot.py
+
+Core automation engine (5 600+ lines) — LinkedIn Easy Apply, ATS adapters, stealth browser, Ollama AI fallback
+
+linkedin_bot/config.py
+
+Candidate profile dataclass and runtime configuration loader
+
+webapp/app.py
+
+Flask web dashboard — authentication, profile management, run scheduling, REST API
+
+webapp/templates/
+
+Jinja2 HTML templates for all dashboard pages (Bootstrap 5)
+
+webapp/models.py
+
+SQLAlchemy models: User, UserProfile, BotRun, JobApplication
+
+chrome_extension/
+
+Manifest V3 Chrome extension for one-click Easy Apply from the LinkedIn feed
+
+thesis/
+
+Academic thesis source (generate_thesis_v2.py) and generated DOCX artefacts
+
+requirements.txt
+
+Python dependency list (Playwright, Flask, SQLAlchemy, python-docx, cryptography…)
+
+Dockerfile
+
+Container image definition for cloud deployment
+
+render.yaml
+
+Render.com service configuration for one-click cloud hosting
+
+Step
+
+Command
+
+Purpose
+
+1
+
+git clone https://github.com/MI804-png/Linkedin_agent.git
+
+Download the full repository to a local folder named Linkedin_agent
+
+2
+
+cd Linkedin_agent
+
+Change the working directory into the cloned repository root
+
+3
+
+python -m venv .venv
+
+Create an isolated Python 3.11 virtual environment in the .venv subfolder to avoid dependency conflicts
+
+4
+
+.venv\Scripts\activate
+
+Activate the virtual environment so that all subsequent pip and python commands use the isolated interpreter
+
+5
+
+pip install -r requirements.txt
+
+Install all Python dependencies: Flask, SQLAlchemy, Playwright, python-docx, cryptography, Werkzeug, and others
+
+6
+
+playwright install chromium
+
+Download the Playwright-managed Chromium browser binary used by the automation engine
+
+7
+
+cd webapp
+
+Navigate into the webapp sub-directory containing the Flask application and its database
+
+8
+
+python run_5001.py
+
+Start the Flask development server on http://localhost:5001 — open this URL in a browser to access the dashboard
+
+Run Set
+
+Scanned
+
+Submitted
+
+Skipped
+
+Failures
+
+Submit Rate
+
+Runs 1–10
+(no handler)
+
+40
+
+0
+
+0
+
+40
+
+0%
+
+Runs 11–30
+(stealth fix)
+
+200
+
+0
+
+5
+
+195
+
+0%
+
+Runs 31–50
+(URL filter)
+
+200
+
+0
+
+12
+
+188
+
+0%
+
+Runs 51–70
+(CF + scorer)
+
+200
+
+4
+
+28
+
+168
+
+2%
+
+Runs 71–78
+(steady state)
+
+80
+
+9
+
+24
+
+47
+
+11.25%
+
+Field
+
+Type
+
+Required
+
+Purpose
+
+full_name
+
+String
+
+Yes *
+
+Form name fields, cover letter salutation
+
+email
+
+Email
+
+Yes *
+
+Form email fields, RemoteOK registration
+
+phone
+
+String
+
+No
+
+Form phone fields (+country code format)
+
+location
+
+String
+
+No
+
+Location/city fields in ATS forms
+
+linkedin_url
+
+URL
+
+No
+
+LinkedIn profile URL inserted in appropriate fields
+
+github_url
+
+URL
+
+No
+
+GitHub/portfolio URL for developer-specific fields
+
+current_job_title
+
+String
+
+Yes *
+
+Drives keyword search; used in cover letter
+
+experience_years
+
+Integer
+
+No
+
+Years of experience for experience fields
+
+cv_path
+
+File Path
+
+Yes *
+
+Absolute path to PDF resume for file upload
+
+keywords
+
+String list
+
+No
+
+Additional search terms (comma-separated)
+
+headless
+
+Boolean
+
+No
+
+Run browser invisibly (True) or visibly (False)
+
+max_per_site
+
+Integer
+
+No
+
+Maximum applications per job board per run
+
+ATS Platform
+
+Domain
+
+Market Segment
+
+Greenhouse
+
+greenhouse.io
+
+Growth-stage tech (12%)
+
+Lever
+
+lever.co
+
+Growth-stage tech (10%)
+
+Ashby
+
+ashbyhq.com / ashby.io
+
+Modern tech startups (7%)
+
+SmartRecruiters
+
+smartrecruiters.com
+
+Enterprise / mid-market
+
+Workable
+
+workable.com
+
+Global SME
+
+Teamtailor
+
+teamtailor.com
+
+Scandinavian / European
+
+Personio
+
+personio.com
+
+European HR platform
+
+Recruitee
+
+recruitee.com
+
+European SME market

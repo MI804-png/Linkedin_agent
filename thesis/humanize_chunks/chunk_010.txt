@@ -1,0 +1,53 @@
+**Practical Contribution:** The implemented prototype delivers a complete operational workflow supporting manual analysis, batch ingestion, role-specific dashboards, historical tracking, and PDF export. Validation results demonstrate stable performance across diverse organizational scenarios, consistent risk differentiation, and practical utility for strategic planning, risk identification, and performance monitoring.
+
+**Governance and Auditability:** Unlike commercial systems that obscure analytical logic, this solution enables management and auditors to inspect, validate, and modify KPI definitions. Organizations can maintain governance over their decision-support infrastructure rather than depending on vendor opacity.
+
+### 6.2 Limitations and Constraints
+
+**Analytical Limitations:**
+
+1. **Synthetic Training Data:** The ML model is trained on synthetic data generated from the rule-based KPI engine, not historical organizational outcomes. This limits predictive power relative to models trained on real performance data.
+
+2. **Domain-Specific Calibration:** KPI normalization rules and weighting schemes employ domain expertise-based assumptions. Validation against real organizational outcomes is not included within thesis scope.
+
+3. **Static Model:** The system does not incorporate longitudinal or time-series data. Trend analysis is limited to user-submitted snapshots, not continuous monitoring.
+
+4. **Limited External Context:** The system includes optional integrations with World Bank indicators, Teleport city scores, and exchange rates for contextual enrichment, but does not systematically incorporate industry benchmarking or competitive positioning.
+
+**Technical Limitations:**
+
+1. **Single-User Deployment:** SQLite persistence is appropriate for thesis demonstration but limits concurrent multi-user scenarios. Production deployment would require migration to PostgreSQL or equivalent.
+
+2. **No Real-Time Integration:** The system does not connect to live HRIS, financial systems, or operational dashboards. All inputs are user-submitted or batch-imported.
+
+3. **Limited Explainability:** The ML model's feature contribution approximation is directional only, not a full Shapley explanation. Rule-based outputs are fully transparent but offer limited explanation of why specific thresholds or weights were chosen.
+
+4. **Demonstration Scope:** The system includes role-based seeded demo accounts but no audit logging, CSRF protection, or production-grade security hardening.
+
+### 6.3 Future Work and Enhancement Opportunities
+
+**Short-Term Enhancements (6-12 months):**
+
+1. **Live HRIS Integration:** Implement connectors for Workday, SuccessFactors, or similar platforms to populate employee metrics automatically.
+
+2. **Financial System Integration:** Integrate with accounting software (QuickBooks, NetSuite) for automated financial metric ingestion.
+
+3. **Time-Series Analysis:** Extend system to compute trend trajectories, forecasts, and leading-indicator correlations from historical snapshots.
+
+4. **Advanced Explainability:** Implement SHAP values or similar techniques for comprehensive feature contribution analysis beyond current approximation.
+
+**Medium-Term Enhancements (1-2 years):**
+
+1. **Multi-Organization Benchmarking:** Enable cross-company anonymous benchmarking, allowing management to contextualize metrics against peer organizations.
+
+2. **Predictive Modeling:** Train real-world ML models on historical organization-outcome relationships (e.g., linking KPI profiles to subsequent revenue growth, retention improvement, or risk realization).
+
+3. **Mobile Application:** Develop mobile interfaces for dashboard monitoring and alert notifications.
+
+4. **Advanced Segmentation:** Enable drill-down analytics by department, geography, or other organizational dimensions.
+
+**Long-Term Vision (2+ years):**
+
+1. **Autonomous Recommendations:** Develop rule-based and ML-driven recommendation systems that automatically identify high-impact interventions.
+
+2. **Scenario Simulation:** Enable management to model organizational changes (e.g., "what if we increase retention by 5%?") and predict impact on OHI and strategic readiness.

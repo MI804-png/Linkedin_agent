@@ -1,0 +1,55 @@
+9. Figure 9: Database Schema (Users and Analyses Tables)
+
+10. Figure 10: Machine Learning Model Training and Prediction Flow
+
+---
+
+# REFERENCES
+
+[1] Altman, E. I. Predicting Financial Distress and Bankruptcy. New York: Wiley, 1968.
+
+[2] Becker, B. E.; Huselid, M. A.; Ulrich, D. The HR Scorecard: Linking People, Strategy, and Performance. Boston: Harvard Business School Press, 2001.
+
+[3] Bondarouk, T.; Brewster, C. Conceptualising the future of HRM and technology research. The International Journal of Human Resource Management, 27(21), 2016, pp. 2652-2671.
+
+[4] Bondarouk, T.; Ruël, H. The strategic value of e-HRM: Results from an exploratory study in a governmental organization. The International Journal of Human Resource Management, 24(2), 2013, pp. 391-414.
+
+[5] Cascio, W. F.; Boudreau, J. W. Investing in People: Financial Impact of Human Resource Initiatives. 2nd ed. Upper Saddle River: FT Press, 2011.
+
+[6] Davenport, T. H.; Harris, J. G. Competing on Analytics: The New Science of Winning. Boston: Harvard Business School Press, 2007.
+
+[7] Drucker, P. F. Management: Tasks, Responsibilities, Practices. New York: Harper & Row, 1973.
+
+[8] Fitz-enz, J.; Mattox, J. R. Predictive Analytics for Human Resources. Hoboken: Wiley, 2014.
+
+[9] George, G.; Haas, M. R.; Pentland, A. Big data and management. Academy of Management Journal, 57(2), 2014, pp. 321-326.
+
+[10] Gorry, G. A.; Scott Morton, M. S. A framework for management information systems. Sloan Management Review, 13(1), 1971, pp. 55-70.
+
+[11] Guszcza, J.; Lewis, H.; Evans-Greenwood, P. Cognitive technologies and the economics of prediction: Harnessing the power of machine learning. Deloitte Review, 20, 2017, pp. 40-55.
+
+[12] ISO 31000:2018. Risk Management - Guidelines. Geneva: International Organization for Standardization, 2018.
+
+[13] ISO/IEC 25010:2011. Systems and Software Engineering - Systems and Software Quality Requirements and Evaluation (SQuaRE) - System and Software Quality Models. Geneva: International Organization for Standardization, 2011.
+
+[14] Kahneman, D.; Tversky, A. Prospect theory: An analysis of decision under risk. Econometrica, 47(2), 1979, pp. 263-291.
+
+[15] Kaplan, R. S.; Norton, D. P. The Balanced Scorecard: Measures that drive performance. Harvard Business Review, 70(1), 1992, pp. 71-79.
+
+[16] Keen, P. G. W.; Scott Morton, M. S. Decision Support Systems: An Organizational Perspective. Reading, MA: Addison-Wesley, 1978.
+
+[17] Laudon, K. C.; Laudon, J. P. Management Information Systems: Managing the Digital Firm. 16th ed. Harlow: Pearson, 2020.
+
+[18] March, J. G.; Simon, H. A. Organizations. New York: Wiley, 1958.
+
+[19] Marr, B. Data Strategy: How to Profit from a World of Big Data, Analytics and AI. London: Kogan Page, 2017.
+
+[20] McAfee, A.; Brynjolfsson, E. Big data: The management revolution. Harvard Business Review, 90(10), 2012, pp. 60-68.
+
+[21] NIST SP 800-53 Rev. 5. Security and Privacy Controls for Information Systems and Organizations. Gaithersburg, MD: National Institute of Standards and Technology, 2020.
+
+[22] NIST SP 800-61 Rev. 2. Computer Security Incident Handling Guide. Gaithersburg, MD: National Institute of Standards and Technology, 2012.
+
+[23] Power, D. J. A Brief History of Decision Support Systems. DSSResources.COM, version 4.0, 2007.
+
+[24] Rothwell, W. J. Effective Succession Planning: Ensuring Leadership Continuity and Building Talent from Within. 4th ed. New York: AMACOM, 2010.

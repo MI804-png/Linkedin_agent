@@ -1,0 +1,57 @@
+All inputs are normalized to comparable 0-100 scales to enable weighted aggregation without domain-specific bias. Normalization rules employ piecewise linear transformations, thresholds, and diminishing-return functions where theoretically justified.
+
+### 3.3 KPI Design and Normalization Strategy
+
+The system computes four principal indicators:
+
+**Leadership Readiness Score (LRS)** [Formula 1]
+
+LRS = 0.40 × Normalized_Leadership_Years + 0.35 × Digital_Maturity + 0.25 × Retention_Percentage     (1)
+
+This metric reflects organizational capacity for strategic initiatives and change management. It combines experience-based depth (leadership tenure), capability for modern operational challenges (digital maturity), and team stability (retention).
+
+**Scaling Risk Score (SRS)** [Formula 2]
+
+SRS = 0.30 × Churn_Percentage + 0.25 × Key_Person_Dependency + 0.25 × Debt_Pressure + 0.20 × Process_Fragility     (2)
+
+This metric quantifies organizational vulnerability to growth pressures. Higher scores indicate greater scaling risk. Components reflect workforce instability, concentration risk, financial constraints, and operational maturity gaps.
+
+**Financial Stability Composite (FSC)** [Formula 3]
+
+FSC = 0.40 × Profit_Margin + 0.35 × Growth_Rate + 0.25 × Cash_Position     (3)
+
+This metric reflects financial resilience and runway. It balances profitability (sustainability), growth (market position), and liquidity (operational flexibility).
+
+**Organizational Health Index (OHI)** [Formula 4]
+
+OHI = 0.40 × LRS + 0.35 × (100 − SRS) + 0.25 × FSC     (4)
+
+The OHI integrates all three dimensions into a single organizational health metric. Higher OHI values indicate better overall organizational condition and readiness for strategic initiatives.
+
+All formulas employ equal-weight assumptions where domain expertise is absent, with provisions for customization based on organizational priorities. Normalization bounds prevent extreme values from distorting results, and transparent documentation enables governance review and modification.
+
+### 3.4 Role-Based Dashboard Architecture
+
+The system generates role-specific analytical views aligned with decision-making authority and information needs:
+
+**CEO Dashboard:** Emphasizes strategic health indicators, growth capacity, and overall risk posture. Prioritizes OHI, LRS, and SRS trends over detailed operational metrics.
+
+**HR Dashboard:** Focuses on leadership development, retention risk, and organizational readiness. Highlights LRS components, churn indicators, and succession planning implications.
+
+**Finance Dashboard:** Emphasizes financial metrics, debt pressure, cash runway, and growth sustainability. Prioritizes FSC components and leverage ratios.
+
+**Operations Dashboard:** Focuses on process maturity, dependency risk, and operational resilience. Emphasizes process documentation, key-person dependency, and scaling constraints.
+
+Each dashboard presents role-specific KPI cards with scores, qualitative risk bands (Low/Moderate/High), interpretive narratives, and recommended actions. This role-based approach ensures that different stakeholders receive contextually relevant information aligned with their decision authority.
+
+### 3.5 Machine Learning Support Layer
+
+A secondary machine learning model (Gradient Boosting Regressor) provides comparative probability estimation. This model is trained on synthetic data generated from the deterministic KPI engine, allowing it to approximate the rule-based mapping while providing secondary confidence intervals.
+
+The ML layer serves three functions:
+
+1. **Consistency Checking:** Comparing ML predictions against rule-based outputs identifies cases where rules may require recalibration.
+
+2. **Uncertainty Quantification:** ML model confidence scores provide decision-makers with explicit uncertainty bounds.
+
+3. **Future Enhancement Path:** The ML layer establishes architecture for progressive enhancement toward stronger predictive models without compromising current transparency requirements.

@@ -1,0 +1,46 @@
+**Report Structure:**
+- Cover page with company name, analysis date, source identifier
+- Executive summary with verdict, risk band, and narrative
+- KPI snapshot table with scores and interpretations
+- Input submission table for auditability
+- Recommendations list derived from rule-based logic
+- Optional ML scoring section with probability and feature contribution table
+
+**Deterministic Output:** Identical inputs produce byte-identical PDFs across reruns, enabling regression testing and reproducibility verification.
+
+This approach supports governance and audit requirements while maintaining practical usability for reporting and documentation.
+
+---
+
+# 5. RESULTS, EVALUATION, AND SYSTEM VALIDATION
+
+### 5.1 Validation Methodology and Test Coverage
+
+Validation scope encompasses six categories:
+
+**1. Authentication and Authorization:** Functional tests confirm that role-specific login succeeds with valid credentials, fails appropriately with invalid credentials, and enforces role-based access control on protected routes. Non-authenticated requests are redirected to login. Admin users can view all records; non-admin users access only their own submissions.
+
+**2. Input Validation and Boundary Handling:** Tests submit numeric fields with boundary values (minimum valid, maximum valid, out-of-range negative, out-of-range excessive), missing values, and invalid text. Verification confirms: out-of-range values clamp to valid bounds, missing values substitute default values, invalid text does not cause unhandled exceptions, clamping and defaults are logged as validation notes.
+
+**3. Deterministic KPI Computation:** Identical inputs submitted repeatedly produce byte-identical outputs, confirming deterministic computation. Controlled input variations (e.g., increasing leadership years by 5%) produce expected directional changes in LRS and OHI.
+
+**4. CSV Batch Ingestion:** Mixed-quality CSV files (containing unknown industries, invalid numeric values, missing fields) are processed without route failure. Row-level validation notes accumulate; batch result ranking computes correctly; output provides visibility into quality issues.
+
+**5. Persistence and History:** Analysis records insert and retrieve correctly. Historical queries filter by user and role appropriately. Repeated analyses of same company enable trend computation (e.g., improvement or degradation in OHI from run to run).
+
+**6. PDF Export and Reproducibility:** Exported PDFs include complete company metadata, KPI snapshot, input table, recommendations, and optional ML section. Multiple exports of same analysis identifier produce byte-identical PDFs. Exports remain consistent relative to historical analysis records even if system configuration changes.
+
+### 5.2 Observed Results and System Performance
+
+**Functional Validation Outcome:**
+The prototype successfully executed all six validation categories without critical failures. Specific observations:
+
+- All authentication workflows completed as specified; unauthorized access appropriately denied.
+- Input boundary tests confirmed proper clamping and default substitution without crashes.
+- KPI computation demonstrated mathematical determinism (identical outputs for identical inputs).
+- Batch ingestion processed test CSV files with 50-100 rows, accumulating appropriate validation notes.
+- Historical queries correctly filtered by user and role; trend indicators displayed expected directional changes.
+- PDF exports generated successfully for varied analysis records; byte-identity comparison confirmed deterministic output.
+
+**Performance Characteristics:**
+Analysis computation (14 inputs → 4 KPIs + ML prediction) completes in <100ms on commodity hardware. Batch processing of 100-row CSV completes in <3 seconds. PDF generation completes in <500ms per analysis.

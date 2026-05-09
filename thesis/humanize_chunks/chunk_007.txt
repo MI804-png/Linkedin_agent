@@ -1,0 +1,70 @@
+1. **Authentication:** User logs in with username and password; credentials validated against hashed passwords in SQLite; session token established.
+
+2. **Input Collection:** User navigates to analysis form and enters company profile data (14 numeric fields) and categorical selections (industry, stage).
+
+3. **Validation:** Input values coerced to expected types, clamped to valid ranges, and checked for completeness. Validation errors aggregated with user guidance.
+
+4. **KPI Computation:** Inputs normalized to 0-100 scales using domain-specific rules. Four principal KPIs computed deterministically using explicit formulas (Equations 1-4).
+
+5. **ML Comparison:** Synthetic feature vector constructed and passed to trained Gradient Boosting Regressor. Probability score and confidence interval generated.
+
+6. **Result Aggregation:** Risk band (Low/Moderate/High) assigned based on OHI thresholds. Narrative recommendations generated from rule-based logic. KPI components and trends compiled.
+
+7. **Persistence:** Complete analysis record (inputs, outputs, timestamp, user identity, source marker) serialized to JSON and persisted in SQLite analyses table.
+
+8. **Response Rendering:** Result context passed to template engine, rendering analysis cards, KPI visualization, recommendations, and trend comparison against user's prior analyses.
+
+**CSV Batch Workflow:**
+
+1. **File Upload:** User selects CSV file conforming to documented schema (14 fields, specific column order).
+
+2. **Stream Parsing:** CSV rows parsed incrementally to prevent memory exhaustion on large files.
+
+3. **Row-Level Validation:** Each row undergoes field validation, type coercion, range clamping, and null value substitution. Validation notes accumulated (e.g., "field_name defaulted to value").
+
+4. **Parallel Analysis:** Each validated row passed through deterministic KPI engine. Analysis results accumulated.
+
+5. **Ranking:** Batch results ranked by OHI (highest organizational health first) with average probability and risk distribution computed.
+
+6. **Persistence:** Each row persisted as independent analysis record, linked to batch source identifier.
+
+7. **Summary Rendering:** Batch summary returned with ranking table, validation note rollup, and average metrics.
+
+This pipeline prioritizes robustness and auditability over performance optimization, appropriate for thesis-scope implementation.
+
+### 4.4 Database Schema and Persistence Strategy
+
+**Users Table:**
+
+```
+id (INTEGER, PRIMARY KEY)
+username (TEXT, UNIQUE)
+password_hash (TEXT)
+role (TEXT) – admin, ceo, hr, finance, operations
+full_name (TEXT)
+created_at (TIMESTAMP)
+```
+
+**Analyses Table:**
+
+```
+id (INTEGER, PRIMARY KEY)
+company_name (TEXT)
+industry (TEXT)
+stage (TEXT)
+created_by (INTEGER, FOREIGN KEY → users.id)
+created_at (TIMESTAMP)
+source (TEXT) – manual, batch
+provider (TEXT, NULLABLE)
+batch_name (TEXT, NULLABLE)
+payload_json (TEXT) – validated inputs
+result_json (TEXT) – computed KPIs and predictions
+```
+
+This minimal schema supports multi-tenancy by user, role-aware queries, and analysis reproducibility through snapshot storage. JSON columns provide schema flexibility for evolving models.
+
+### 4.5 PDF Reporting and Export Functionality
+
+The reporting pipeline generates portable PDF documents capturing analysis results at the moment of export. Key characteristics:
+
+**Snapshot-Based Generation:** Reports are generated from stored payload and result snapshots, not recalculated at export time. This ensures historical consistency—exported reports reflect exactly what the user saw during analysis, even if KPI formulas evolve.

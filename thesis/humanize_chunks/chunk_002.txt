@@ -1,0 +1,37 @@
+The work is both theoretically and practically motivated. From a research perspective, it demonstrates how explainable artificial intelligence and transparent rule-based modeling can be combined in an operational system. From a practical perspective, it delivers a functional software prototype that organizations can deploy to improve strategic planning, risk identification, and organizational performance evaluation.
+
+---
+
+# 1. INTRODUCTION AND PROBLEM DEFINITION
+
+### 1.1 Problem Context and Motivation
+
+Organizations accumulate large volumes of data across human resources, finance, and operations functions. HR systems track employee tenure, performance ratings, compensation, retention patterns, and organizational structure. Financial systems record revenue, profitability, cash flow, debt levels, and asset utilization. Operations departments monitor process maturity, productivity metrics, dependency concentrations, and risk exposures. However, these datasets remain largely siloed, analyzed separately by functional teams using different methodologies and assumptions. [1][7]
+
+Executive leadership consequently faces a fundamental challenge: how to interpret organizational condition holistically. When leadership readiness, financial resilience, operational risk, and talent stability are assessed independently, management lacks a coherent framework for prioritizing actions or understanding cross-functional vulnerabilities. This fragmentation is particularly acute in mid-sized organizations and fast-growing companies where resource constraints limit investment in integrated enterprise analytics platforms. [6][11]
+
+A second motivation stems from the opacity of commercial business intelligence and HR analytics products. Many platforms provide dashboard outputs with little explanation of underlying algorithms, weighting schemes, or calculation methodologies. This opacity weakens decision-maker confidence, complicates auditing and governance, and creates dependency on vendor support for model interpretation. Organizations increasingly demand analytics solutions that prioritize explainability and traceability. [16][17]
+
+### 1.2 Core Problem Statement
+
+The core problem addressed by this thesis is the absence of integrated and auditable analytical frameworks that jointly evaluate multiple organizational dimensions—leadership readiness, scaling risk, financial health, and operational resilience—within a single transparent model. Existing solutions exhibit three critical weaknesses:
+
+1. **Functional Silos:** HR, finance, and operations analytics operate independently. KPIs computed in one domain are not systematically integrated with indicators from other domains, limiting cross-functional insights.
+
+2. **Opacity of Scoring Logic:** Commercial platforms often employ proprietary algorithms that users cannot inspect, validate, or modify. This black-box approach undermines governance, auditability, and stakeholder trust. [20][21]
+
+3. **Limited Accessibility:** Enterprise-grade analytics platforms are expensive and complex, making them inaccessible to smaller organizations and constraining customization for domain-specific needs.
+
+### 1.3 Thesis Objectives
+
+This thesis aims to achieve the following objectives:
+
+1. **Design a transparent, auditable KPI model** with explicit normalization rules and weighted aggregation formulas that can be reviewed, validated, and modified by subject-matter experts.
+
+2. **Implement a functional software prototype** that demonstrates the viability of integrating multi-domain organizational data into a unified analytical system.
+
+3. **Develop role-specific dashboards** that present analytical results in formats aligned with the decision-making context of different organizational roles (CEO, HR, Finance, Operations).
+
+4. **Validate system functionality** through boundary testing, scenario analysis, and operational acceptance criteria to demonstrate stable and interpretable performance.
+
+5. **Establish a foundation for future enhancement** that allows progression toward live HRIS integration, richer machine learning support, and longitudinal forecasting without fundamental architectural redesign.

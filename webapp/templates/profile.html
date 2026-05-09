@@ -102,6 +102,12 @@
                  value="{{ p.current_job_title }}" placeholder="e.g. Full Stack Developer">
         </div>
         <div class="col-md-4">
+          <label class="form-label fw-semibold">Networking Title</label>
+          <input type="text" name="networking_title" class="form-control"
+                 value="{{ p.networking_title }}" placeholder="e.g. Software Engineer">
+          <div class="form-text">Used by Follow Companies to choose role-matched target companies.</div>
+        </div>
+        <div class="col-md-4">
           <label class="form-label fw-semibold">Highest Education Level</label>
           <select name="highest_education" class="form-select">
             <option value="" {{ "selected" if not p.highest_education }}></option>
@@ -267,6 +273,12 @@
           <input type="number" name="max_applications" class="form-control"
                  value="{{ p.max_applications }}" min="1" max="50">
           <div class="form-text">Recommended: 10–25 to avoid LinkedIn limits.</div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">Max Companies to Follow (Per Run)</label>
+          <input type="number" name="max_network_companies_per_run" class="form-control"
+                 value="{{ p.max_network_companies_per_run or 20 }}" min="1" max="100">
+          <div class="form-text">Used by Network with Companies.</div>
         </div>
         <div class="col-md-4">
           <label class="form-label fw-semibold">Workplace Type</label>

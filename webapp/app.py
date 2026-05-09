@@ -130,6 +130,7 @@ class UserProfile(db.Model):
     willing_to_work_onsite = db.Column(db.Boolean, default=False)
     willing_to_work_remote = db.Column(db.Boolean, default=True)
     current_job_title = db.Column(db.String(128), default="")
+    networking_title = db.Column(db.String(128), default="")
     years_management_experience = db.Column(db.String(8), default="0")
     highest_education = db.Column(db.String(128), default="")
     field_of_study = db.Column(db.String(128), default="")
@@ -149,6 +150,7 @@ class UserProfile(db.Model):
     search_locations = db.Column(db.Text, default="Hungary")     # comma/newline-separated
     workplace_type = db.Column(db.String(16), default="all")      # all/remote/hybrid/on_site
     max_applications = db.Column(db.Integer, default=25)
+    max_network_companies_per_run = db.Column(db.Integer, default=20)
     posted_days_ago = db.Column(db.Integer, default=7)
 
     # Application type filter
@@ -797,6 +799,7 @@ def profile():
         p.willing_to_work_onsite = bool(request.form.get("willing_to_work_onsite"))
         p.willing_to_work_remote = bool(request.form.get("willing_to_work_remote"))
         p.current_job_title = request.form.get("current_job_title", "").strip()
+        p.networking_title = request.form.get("networking_title", "").strip()
         p.years_management_experience = request.form.get("years_management_experience", "0").strip()
         p.highest_education = request.form.get("highest_education", "").strip()
         p.field_of_study = request.form.get("field_of_study", "").strip()
@@ -820,6 +823,11 @@ def profile():
             p.max_applications = int(request.form.get("max_applications", 25))
         except ValueError:
             p.max_applications = 25
+        try:
+            p.max_network_companies_per_run = int(request.form.get("max_network_companies_per_run", 20))
+        except ValueError:
+            p.max_network_companies_per_run = 20
+        p.max_network_companies_per_run = max(1, min(100, p.max_network_companies_per_run))
         try:
             p.posted_days_ago = int(request.form.get("posted_days_ago", 7))
         except ValueError:
@@ -1308,6 +1316,26 @@ def ensure_schema_updates() -> None:
                     elif dialect == "postgresql":
                         db.session.execute(text("ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS apply_type VARCHAR(16) DEFAULT 'easy_apply'"))
                     db.session.commit()
+
+                if "networking_title" not in profile_cols:
+                    if dialect == "sqlite":
+                        db.session.execute(text("ALTER TABLE user_profiles ADD COLUMN networking_title VARCHAR(128) DEFAULT ''"))
+                    elif dialect == "postgresql":
+                        db.session.execute(text("ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS networking_title VARCHAR(128) DEFAULT ''"))
+                    db.session.commit()
+
+                if "max_network_companies_per_run" not in profile_cols:
+                    if dialect == "sqlite":
+                        db.session.execute(text("ALTER TABLE user_profiles ADD COLUMN max_network_companies_per_run INTEGER DEFAULT 20"))
+                    elif dialect == "postgresql":
+                        db.session.execute(text("ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS max_network_companies_per_run INTEGER DEFAULT 20"))
+                    db.session.commit()
+
+                db.session.execute(text(
+                    "UPDATE user_profiles SET max_network_companies_per_run=20 "
+                    "WHERE max_network_companies_per_run IS NULL OR max_network_companies_per_run < 1"
+                ))
+                db.session.commit()
 
             # Ensure MissingSkillsReport table exists (created by create_all if missing)
             if "missing_skills_reports" not in table_names:

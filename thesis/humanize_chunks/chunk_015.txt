@@ -1,0 +1,100 @@
+1. Profit Margin (15%)
+2. Digital Score (14%)
+3. Growth Rate (12%)
+4. Retention Percentage (11%)
+5. Churn Percentage (10%)
+6. Cash Position (9%)
+7. Leadership Years (8%)
+8. Debt-to-Equity Ratio (7%)
+9. Process Documentation (7%)
+10. Key-Person Dependency (5%)
+
+**Limitations:**
+
+- Model trained on synthetic data, not historical organizational outcomes
+- No calibration against real performance data
+- Feature importance approximation is directional, not exact (not SHAP values)
+- Model assumes linear separability in feature space; nonlinear patterns may be missed
+
+### Appendix F: Validation Test Cases
+
+**Test Case 1: Input Boundary Validation**
+
+Input: leadership_years = -5 (invalid, out of range)
+Expected: Clamped to 0; validation note "leadership_years clamped to minimum (0)"
+Observed: ✓ Correct
+
+**Test Case 2: Missing Value Substitution**
+
+Input: profit_margin = null
+Expected: Substituted with default (15%); note "margin_pct defaulted to 15"
+Observed: ✓ Correct
+
+**Test Case 3: Deterministic Computation**
+
+Input: Same company profile submitted twice
+Expected: Byte-identical output
+Observed: ✓ Correct
+
+**Test Case 4: Role-Based Access Control**
+
+Action: Non-admin user attempts to view another user's analysis
+Expected: Access denied; redirect to history
+Observed: ✓ Correct
+
+**Test Case 5: CSV Batch Robustness**
+
+Input: CSV with 50 rows; 5 rows containing invalid industry codes
+Expected: Valid rows processed; invalid rows marked with notes; no route failure
+Observed: ✓ Correct; 45 analyses persisted, 5 noted with validation issues
+
+**Test Case 6: PDF Export Reproducibility**
+
+Action: Export same analysis twice
+Expected: Byte-identical PDFs
+Observed: ✓ Correct
+
+---
+
+### Appendix G: End-to-End Workflow Specifications by User Role
+
+This appendix documents the exact operational workflow executed by each role. The objective is to ensure that the implementation can be audited not only at code level, but also at process level. Each workflow defines entry conditions, sequence steps, expected system responses, and outcome artifacts.
+
+**G.1 CEO Workflow (Strategic Readiness Review)**
+
+**Entry Conditions:**
+
+- Authenticated role = `ceo` or `admin`
+- At least one company analysis record exists in storage
+- Dashboard cache includes last KPI snapshot or can be computed dynamically
+
+**Sequence Steps:**
+
+1. User opens `/dashboard/ceo`
+2. System loads latest analysis for user scope (global if admin)
+3. KPI panel renders OHI, LRS, SRS, FSC with color-coded risk bands
+4. Strategic recommendation block displays top-priority interventions
+5. Trend panel compares current OHI against previous snapshot
+6. User opens history table and selects company for deep dive
+7. User exports selected analysis PDF for board reporting
+
+**Expected Outputs:**
+
+- Strategic view with integrated organizational health
+- Ranked action priorities with explanatory narratives
+- Audit-ready PDF summary for management communication
+
+**Control Points:**
+
+- Role authorization on route access
+- Deterministic KPI rendering for reproducibility
+- Snapshot consistency between dashboard and export
+
+**G.2 HR Workflow (Retention and Leadership Stability Review)**
+
+**Entry Conditions:**
+
+- Authenticated role = `hr` or `admin`
+- Input contains retention/churn/leadership indicators
+
+**Sequence Steps:**
