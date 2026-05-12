@@ -53,3 +53,6 @@ desktop.ini
 aws_5th_semester/
 python_project_MiLa_smart_5thsemester/
 software_presentation2/
+
+# Thesis and generated humanization/creation outputs (never commit)
+thesis/
