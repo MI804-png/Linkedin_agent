@@ -28,7 +28,7 @@ All requested features have been implemented and tested. The dashboard now loads
 
 ---
 
-## 2. Render-Compatible Per-User Scheduler ✅
+## 2. Per-User Scheduler ✅
 
 **Implementation:**
 - Created `/api/cron/check_scheduled_jobs` HTTP endpoint
@@ -41,16 +41,14 @@ All requested features have been implemented and tested. The dashboard now loads
 
 **Features:**
 - Bearer token authentication
-- UTC time-based scheduling (server-agnostic)
+- UTC time-based scheduling for consistent local runs
 - 1-hour debounce to prevent duplicate runs
-- PostgreSQL + SQLite compatible schema migrations
+- SQLite schema updates handled by the local application startup
 
-**Usage on Render:**
-```yaml
-# Add to render.yaml cron job
-curl -H "Authorization: Bearer YOUR_SECRET_KEY" \
-  https://your-app.onrender.com/api/cron/check_scheduled_jobs
-```
+**Desktop/Local Usage:**
+- Run the local AutoApply dashboard on your PC
+- Keep your machine available at the scheduled time
+- Use the dashboard settings to enable auto-apply and store your preferred schedule
 
 ---
 
@@ -123,19 +121,10 @@ MissingSkillsReport:
    - Set preferred run time (UTC)
    - Enable "Auto-apply at scheduled time"
 
-### For Render Deployment:
-1. Add cron job to `render.yaml`:
-```yaml
-services:
-  - type: cron
-    schedule: "*/1 * * * *"  # Every minute
-    command: "curl -H 'Authorization: Bearer $CRON_SECRET' $RENDER_EXTERNAL_URL/api/cron/check_scheduled_jobs"
-```
-
-2. Set environment variable in Render dashboard:
-```
-CRON_SECRET=your-secure-random-key
-```
+### For Desktop Use:
+1. Start the local dashboard before using scheduled runs.
+2. Keep the browser and machine available when the run is due.
+3. Review the dashboard history and logs after each run.
 
 ---
 
@@ -205,7 +194,7 @@ If you encounter any issues:
 3. Verify database migrations: Check `user_profiles` table for new columns
 4. Clear browser cache if template changes don't appear
 
-For Render deployment issues, check:
-- Environment variables are set correctly
-- CRON_SECRET matches your authorization header
+For scheduler issues, check:
+- The local dashboard is running
+- Your profile is complete and the scheduled time is configured correctly
 - Database migrations have run (`ensure_schema_updates()` called)

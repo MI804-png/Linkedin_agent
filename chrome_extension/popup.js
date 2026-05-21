@@ -1,6 +1,6 @@
 // popup.js — LinkedIn AutoApply Chrome Extension
 
-const DEFAULT_SERVER = "https://linkedin-autoapply.onrender.com";
+const DEFAULT_SERVER = "http://localhost:5000";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 

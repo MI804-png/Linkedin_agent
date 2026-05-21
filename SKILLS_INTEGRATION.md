@@ -98,10 +98,10 @@ Expected output:
    - Track skill acquisition over time
    - Predict impact of learning new skills
 
-4. **Render Deployment**
-   - Set CRON_SECRET_KEY environment variable
-   - Configure external cron job to call /api/cron/check_scheduled_jobs
-   - Monitor logs for successful scheduled runs
+4. **Desktop Usage**
+   - Run the local dashboard on your PC
+   - Review missing skills from the dashboard after each run
+   - Use the reports to refine profile keywords and learning priorities
 
 ## Files Modified
 - linkedin_bot/bot.py (added skill extraction integration)

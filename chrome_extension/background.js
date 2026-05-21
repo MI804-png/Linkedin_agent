@@ -1,7 +1,7 @@
 // background.js — Service Worker for LinkedIn AutoApply
 // Handles: alarms, tab management, messaging with popup + content script
 
-const DEFAULT_SERVER = "https://linkedin-autoapply.onrender.com";
+const DEFAULT_SERVER = "http://localhost:5000";
 const ALARM_NAME = "daily_apply";
 const LINKEDIN_JOBS_URL = "https://www.linkedin.com/jobs/";
 
