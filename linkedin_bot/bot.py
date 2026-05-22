@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from datetime import datetime, timezone
+import html as html_lib
 import json
 from pathlib import Path
 import random
@@ -109,24 +110,178 @@ class LinkedInAutoApplyBot:
             f"Phone: {p.phone}",
             f"Location: {p.location}",
             f"Graduation year: {p.graduation_year}",
-            f"Total experience years: {p.total_experience_years}",
+            f"Total experience years: {self._resolved_experience_years(p.total_experience_years)}",
             f"Work authorization Hungary: {p.work_authorization_hungary}",
             f"Work authorization Italy: {p.work_authorization_italy}",
             f"Salary Hungary: {p.salary_hungary}",
             f"Salary Italy: {p.salary_italy}",
         ]
         try:
-            cv_html = self.config.paths.cv_path.parent / "Mikhael_CV.html"
-            if cv_html.exists():
-                raw = cv_html.read_text(encoding="utf-8", errors="ignore")
-                text = re.sub(r"<[^>]+>", " ", raw)
-                text = re.sub(r"\s+", " ", text).strip()
-                if text:
-                    lines.append(f"CV text: {text[:12000]}")
+            cv_text = self._load_cv_text()
+            if cv_text:
+                lines.append(f"CV text: {cv_text[:12000]}")
         except Exception:
             pass
         return "\n".join(lines)
 
+    def _load_cv_text(self) -> str:
+        cached = getattr(self, "_cached_cv_text", None)
+        if cached is not None:
+            return cached
+
+        primary_path = Path(self.config.paths.cv_path)
+        candidates = [primary_path]
+        for ext in (".txt", ".html", ".htm", ".docx", ".pdf"):
+            alt = primary_path.with_suffix(ext)
+            if alt not in candidates:
+                candidates.append(alt)
+
+        chunks = []
+        seen = set()
+        for candidate in candidates:
+            try:
+                resolved = candidate.resolve()
+            except Exception:
+                resolved = candidate
+            if resolved in seen or not candidate.exists():
+                continue
+            seen.add(resolved)
+
+            chunk = self._extract_text_from_cv_file(candidate)
+            if chunk:
+                chunks.append(chunk)
+
+        merged = re.sub(r"\s+", " ", " ".join(chunks)).strip()
+        self._cached_cv_text = merged
+        return merged
+
+    def _extract_text_from_cv_file(self, path: Path) -> str:
+        suffix = path.suffix.lower()
+
+        try:
+            if suffix in {".txt", ".md"}:
+                return path.read_text(encoding="utf-8", errors="ignore")
+
+            if suffix in {".html", ".htm"}:
+                raw = path.read_text(encoding="utf-8", errors="ignore")
+                return html_lib.unescape(re.sub(r"<[^>]+>", " ", raw))
+
+            if suffix == ".docx":
+                with zipfile.ZipFile(path) as archive:
+                    raw = archive.read("word/document.xml").decode("utf-8", errors="ignore")
+                return html_lib.unescape(re.sub(r"<[^>]+>", " ", raw))
+
+            if suffix == ".pdf":
+                try:
+                    from pypdf import PdfReader
+                except Exception:
+                    try:
+                        from PyPDF2 import PdfReader
+                    except Exception:
+                        return ""
+
+                reader = PdfReader(str(path))
+                return "\n".join((page.extract_text() or "") for page in reader.pages)
+        except Exception:
+            return ""
+
+        return ""
+
+    def _estimate_experience_years_from_dates(self, cv_text: str) -> str | None:
+        section = cv_text
+        match = re.search(
+            r"professional experience(.*?)(?:education|projects|certifications|core competencies|skills|languages|$)",
+            cv_text,
+            flags=re.IGNORECASE | re.S,
+        )
+        if match:
+            section = match.group(1)
+
+        normalized = section.lower().replace("–", "-").replace("—", "-")
+        month_numbers = {
+            "jan": 1,
+            "feb": 2,
+            "mar": 3,
+            "apr": 4,
+            "may": 5,
+            "jun": 6,
+            "jul": 7,
+            "aug": 8,
+            "sep": 9,
+            "oct": 10,
+            "nov": 11,
+            "dec": 12,
+        }
+        month_pattern = r"jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?"
+        range_pattern = re.compile(
+            rf"\b(?P<start_month>{month_pattern})\s+(?P<start_year>\d{{4}})\s*-\s*(?:(?P<present>present|current|now)|(?P<end_month>{month_pattern})\s+(?P<end_year>\d{{4}}))",
+            re.IGNORECASE,
+        )
+
+        starts = []
+        ends = []
+        now = datetime.now()
+        for match in range_pattern.finditer(normalized):
+            start_month = month_numbers[match.group("start_month")[:3]]
+            start_year = int(match.group("start_year"))
+            if match.group("present"):
+                end_month = now.month
+                end_year = now.year
+            else:
+                end_month = month_numbers[match.group("end_month")[:3]]
+                end_year = int(match.group("end_year"))
+            starts.append((start_year, start_month))
+            ends.append((end_year, end_month))
+
+        if not starts:
+            return None
+
+        earliest = min(starts)
+        latest = max(ends)
+        total_months = (latest[0] - earliest[0]) * 12 + (latest[1] - earliest[1])
+        estimated_years = max(1, int(round(total_months / 12)))
+        return str(min(50, estimated_years))
+
+    def _infer_experience_years_from_cv(self) -> str | None:
+        cached = getattr(self, "_cached_cv_experience_years", None)
+        if cached is not None:
+            return cached
+
+        cv_text = self._load_cv_text()
+        if len(cv_text) < 40:
+            self._cached_cv_experience_years = None
+            return None
+
+        patterns = (
+            r"\b(?:over|more than|around|about)\s+(\d{1,2})\s*\+?\s*years?\s+of\s+experience\b",
+            r"\b(\d{1,2})\s*\+?\s*years?\s+of\s+(?:professional\s+|practical\s+|work\s+)?experience\b",
+            r"\b(\d{1,2})\s*\+?\s*years?\s+experience\b",
+            r"\bexperience\s*[:\-]?\s*(\d{1,2})\s*\+?\s*years?\b",
+            r"\b(\d{1,2})\s*\+?\s*years?\s+in\s+(?:software|web|backend|frontend|full stack|engineering|development)\b",
+        )
+
+        matches = []
+        lowered = cv_text.lower()
+        for pattern in patterns:
+            for match in re.finditer(pattern, lowered, flags=re.IGNORECASE):
+                try:
+                    years = int(match.group(1))
+                except Exception:
+                    continue
+                if 0 <= years <= 50:
+                    matches.append(years)
+
+        inferred = str(max(matches)) if matches else self._estimate_experience_years_from_dates(cv_text)
+        self._cached_cv_experience_years = inferred
+        return inferred
+    def _resolved_experience_years(self, years_value: str | None = None) -> str:
+        years_text = str(
+            self._infer_experience_years_from_cv()
+            or years_value
+            or self.config.profile.total_experience_years
+            or "5"
+        ).strip()
+        return years_text or "5"
     def _fallback_numeric_value(self, input_el) -> str:
         """Return a safe numeric fallback based on field constraints.
 
@@ -435,7 +590,7 @@ class LinkedInAutoApplyBot:
         )
 
         if any(k in q for k in years_kws):
-            return str(profile.total_experience_years or "3")
+            return self._resolved_experience_years(profile.total_experience_years)
         if any(k in q for k in auth_kws):
             return str(work_auth or "Open to discussion")
         if any(k in q for k in eu_kws):
@@ -1729,6 +1884,7 @@ class LinkedInAutoApplyBot:
         profile = self.config.profile
         work_auth = profile.work_authorization_hungary if "hungary" in location.lower() else profile.work_authorization_italy
         salary = profile.salary_hungary if "hungary" in location.lower() else profile.salary_italy
+        experience_years = self._resolved_experience_years(profile.total_experience_years)
 
         fill_map = {
             "first name": profile.full_name.split(" ")[0],
@@ -1743,9 +1899,12 @@ class LinkedInAutoApplyBot:
             "city": profile.location,
             "location": profile.location,
             # English experience/salary
-            "experience": profile.total_experience_years,
-            "how many year": profile.total_experience_years,
-            "years of experience": profile.total_experience_years,
+            "experience": experience_years,
+            "how many year": experience_years,
+            "how many years of work experience": experience_years,
+            "work experience": experience_years,
+            "year of experience": experience_years,
+            "years of experience": experience_years,
             "salary": salary,
             "compensation": salary,
             "salary expect": salary,
@@ -1765,20 +1924,20 @@ class LinkedInAutoApplyBot:
             "come hai conosciuto": "LinkedIn",
             "come sei venuto a conoscenza": "LinkedIn",
             # Italian experience fields
-            "anni di esperienza": profile.total_experience_years,
-            "anni di lavoro": profile.total_experience_years,
-            "quanti anni": profile.total_experience_years,
-            "anni lavorat": profile.total_experience_years,
-            "anni con": profile.total_experience_years,
-            "anni nel": profile.total_experience_years,
-            "anni nello": profile.total_experience_years,
+            "anni di esperienza": experience_years,
+            "anni di lavoro": experience_years,
+            "quanti anni": experience_years,
+            "anni lavorat": experience_years,
+            "anni con": experience_years,
+            "anni nel": experience_years,
+            "anni nello": experience_years,
             # German experience fields
-            "wie viele jahre": profile.total_experience_years,
-            "jahre erfahrung": profile.total_experience_years,
-            "erfahrung haben sie": profile.total_experience_years,
-            "erfahrung mit": profile.total_experience_years,
-            "erfahrung in": profile.total_experience_years,
-            "jahre mit": profile.total_experience_years,
+            "wie viele jahre": experience_years,
+            "jahre erfahrung": experience_years,
+            "erfahrung haben sie": experience_years,
+            "erfahrung mit": experience_years,
+            "erfahrung in": experience_years,
+            "jahre mit": experience_years,
             # Italian salary
             "aspettativa econom": salary,
             "ral attuale": salary,
@@ -1905,7 +2064,7 @@ class LinkedInAutoApplyBot:
                     "compensation", "wage",
                 )
                 if any(kw in metadata for kw in year_kws):
-                    chosen = str(profile.total_experience_years or "3")
+                    chosen = experience_years
                 elif any(kw in metadata for kw in salary_kws):
                     chosen = str(salary or "35000")
                 else:
@@ -2416,6 +2575,7 @@ class LinkedInAutoApplyBot:
         profile = self.config.profile
         salary = profile.salary_hungary if "hungary" in (location or "").lower() else profile.salary_italy
         city_only = (profile.location or "").split(",")[0].strip() or (profile.location or "")
+        experience_years = self._resolved_experience_years(profile.total_experience_years)
 
         # Inputs / textareas / selects marked required by HTML or ARIA.
         try:
@@ -2570,7 +2730,7 @@ class LinkedInAutoApplyBot:
                 if any(k in meta for k in ("salary", "stipendio", "ral", "compensation", "pay")):
                     fill_val = str(salary or "35000")
                 elif any(k in meta for k in ("year", "experience", "anni", "esperienza", "quanti")):
-                    fill_val = str(profile.total_experience_years or "3")
+                    fill_val = experience_years
                 elif any(k in meta for k in ("notice", "preavviso", "availability", "start date")):
                     fill_val = "0"
                 else:
@@ -2707,9 +2867,9 @@ class LinkedInAutoApplyBot:
     def _force_fill_experience_fields(self, page, years_value: str) -> None:
         """Force-fill experience questions in complex LinkedIn form layouts."""
         try:
-            years_float = float((years_value or "3").strip())
+            years_float = float(self._resolved_experience_years(years_value))
         except Exception:
-            years_float = 3.0
+            years_float = 5.0
         years_int = int(years_float)
         years_int = max(0, min(99, years_int))
         years_text = str(years_int)
@@ -2857,9 +3017,9 @@ class LinkedInAutoApplyBot:
     def _pick_years_option(self, options: list[tuple[str, str]], years_value: str) -> str | None:
         """Pick the closest numeric years option, capped to available values."""
         try:
-            years = int(float((years_value or "0").strip()))
+            years = int(float(self._resolved_experience_years(years_value)))
         except Exception:
-            years = 0
+            years = 5
 
         candidates: list[tuple[int, str]] = []
         for val, txt in options:
@@ -4239,7 +4399,7 @@ class LinkedInAutoApplyBot:
                 req_hint = f"Your requirements align well with my profile, especially in {requirements[:180].strip()}. "
             letter = (
                 f"Dear Hiring Team, I am writing to express my strong interest in the {role_name} role at {company_name}. "
-                f"With {self.config.profile.total_experience_years} years of hands-on software development experience, "
+                f"With {self._resolved_experience_years(self.config.profile.total_experience_years)} years of hands-on software development experience, "
                 f"I have built and delivered web solutions across frontend and backend responsibilities. "
                 f"{req_hint}"
                 "I focus on writing clean, maintainable code, collaborating effectively with cross-functional teams, "

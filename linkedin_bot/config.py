@@ -41,6 +41,7 @@ class CandidateProfile:
     willing_to_work_onsite: bool = False
     willing_to_work_remote: bool = True
     current_job_title: str = "Full Stack Developer"
+    search_job_title: str = ""
     networking_title: str = ""
     years_management_experience: str = "0"
 

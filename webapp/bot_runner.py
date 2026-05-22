@@ -1128,6 +1128,7 @@ def build_config_for_user(
         willing_to_work_onsite=getattr(p, "willing_to_work_onsite", False) or False,
         willing_to_work_remote=getattr(p, "willing_to_work_remote", True) if getattr(p, "willing_to_work_remote", None) is not None else True,
         current_job_title=getattr(p, "current_job_title", "") or "",
+        search_job_title=getattr(p, "search_job_title", "") or getattr(p, "current_job_title", "") or "",
         networking_title=getattr(p, "networking_title", "") or "",
         years_management_experience=getattr(p, "years_management_experience", "0") or "0",
         highest_education=getattr(p, "highest_education", "") or "",
@@ -1145,7 +1146,7 @@ def build_config_for_user(
     )
 
     settings = BotSettings(
-        keywords=p.keywords_list or ["Software Developer"],
+        keywords=p.search_keywords_list or p.keywords_list or ["Software Developer"],
         locations=p.locations_list or ["Hungary"],
         workplace_type=(p.workplace_type or "all"),
         apply_type=(apply_type_override or p.apply_type or "easy_apply"),
@@ -1343,10 +1344,61 @@ def _do_run(
                 # Wire per-job callback so individual results appear in the log.
                 def _on_job_result(result: dict) -> None:
                     status = result.get("status", "?")
-                    title = (result.get("title") or "")[:60]
-                    company = (result.get("company") or "")[:40]
+                    result_title = (result.get("title") or "").strip()
+                    result_company = (result.get("company") or "").strip()
+                    title = result_title[:60]
+                    company = result_company[:40]
                     note = result.get("note") or ""
                     _log(f"[{status.upper()}] {title} @ {company} — {note}")
+
+                    report = result.get("report") if isinstance(result.get("report"), dict) else {}
+                    skills_ctx = report.get("skills_analysis") if isinstance(report.get("skills_analysis"), dict) else {}
+                    if not skills_ctx and isinstance(result.get("missing_skills"), dict):
+                        skills_ctx = result.get("missing_skills") or {}
+
+                    if skills_ctx:
+                        missing = [str(skill).strip() for skill in skills_ctx.get("missing_skills", skills_ctx.get("missing", [])) if str(skill).strip()]
+                        matched = [str(skill).strip() for skill in skills_ctx.get("matched_skills", skills_ctx.get("matched", [])) if str(skill).strip()]
+                        job_skills = [str(skill).strip() for skill in skills_ctx.get("job_skills", []) if str(skill).strip()]
+                        try:
+                            match_pct = float(skills_ctx.get("match_percentage", 0) or 0)
+                        except (TypeError, ValueError):
+                            match_pct = 0.0
+
+                        if missing or matched or job_skills or match_pct:
+                            _log(
+                                f"[REPORT] Skills: match={int(match_pct * 100)}% job={len(job_skills)} matched={len(matched)} missing={len(missing)}"
+                            )
+                            if missing:
+                                _log(f"[REPORT] Missing skills: {', '.join(missing[:6])}")
+
+                    requirements_summary = str(report.get("requirements_summary") or "").strip()
+                    if requirements_summary:
+                        requirements_summary = re.sub(r"\s+", " ", requirements_summary)
+                        if len(requirements_summary) > 220:
+                            requirements_summary = requirements_summary[:217].rsplit(" ", 1)[0].rstrip(" ,;:") + "..."
+                        _log(f"[REPORT] Requirements: {requirements_summary}")
+
+                    external_ats = report.get("external_ats") if isinstance(report.get("external_ats"), dict) else {}
+                    if external_ats:
+                        _log(
+                            "[REPORT] ATS: "
+                            f"{external_ats.get('ats') or 'generic'} | "
+                            f"fields={external_ats.get('fields_filled') or 0} | "
+                            f"steps={external_ats.get('steps_attempted') or 0} | "
+                            f"cv_uploaded={'yes' if external_ats.get('cv_uploaded') else 'no'}"
+                        )
+
+                    uploaded_files = [str(path).strip() for path in report.get("uploaded_files", []) if str(path).strip()]
+                    if uploaded_files:
+                        preview = ", ".join(uploaded_files[:3])
+                        if len(uploaded_files) > 3:
+                            preview += f" (+{len(uploaded_files) - 3} more)"
+                        _log(f"[REPORT] Uploaded: {preview}")
+
+                    qa_pairs = report.get("qa_pairs") if isinstance(report.get("qa_pairs"), list) else []
+                    if qa_pairs:
+                        _log(f"[REPORT] Answered questions: {len(qa_pairs)}")
 
                     _check_stop()  # propagate stop flag to bot after each job result
                     # Keep live dashboard counters in sync while a run is active.
@@ -1360,21 +1412,23 @@ def _do_run(
 
                     # Store missing skills report if available
                     missing_skills = result.get("missing_skills")
-                    if missing_skills and normalized == "submitted":
+                    if missing_skills and normalized in {"submitted", "manual_required", "failed"}:
                         try:
                             MissingSkillsReport = app_mod.MissingSkillsReport
                             report = MissingSkillsReport(
-                                user_id=user_id,
+                                user_profile_id=p.id,
                                 job_id=result.get("job_id", ""),
-                                job_title=title,
-                                company_name=company,
+                                job_title=result_title,
+                                company=result_company,
                                 job_url=result.get("job_url", ""),
                                 missing_skills=json.dumps(missing_skills.get("missing_skills", [])),
-                                confidence_score=missing_skills.get("match_percentage", 0),
-                                created_at=datetime.utcnow(),
+                                confidence=missing_skills.get("match_percentage", 0),
+                                applied_at=datetime.utcnow(),
                             )
                             db.session.add(report)
-                            _log(f"[SKILLS] {len(missing_skills.get('missing_skills', []))} missing skills identified")
+                            _log(
+                                f"[SKILLS] {normalized}: {len(missing_skills.get('missing_skills', []))} missing skills identified"
+                            )
                         except Exception as e:
                             _log(f"[WARN] Failed to store missing skills: {e}")
 

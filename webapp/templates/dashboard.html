@@ -13,6 +13,117 @@
   'failed_series': []
 } %}
 
+{% macro render_job_report(job, show_uploads=true) %}
+  {% set has_external = job.report and job.report.external_ats %}
+  {% set has_uploads = job.report and job.report.uploaded_files %}
+  {% set has_skills = job.report and job.report.skills_analysis %}
+  {% set has_requirements = job.report and job.report.requirements_summary %}
+  {% set has_questions = job.report and job.report.qa_pairs %}
+
+  {% if has_external %}
+  <div class="mb-2">
+    <strong class="small">🌐 External ATS Report:</strong>
+    <div class="small mt-1 d-flex flex-wrap gap-2 align-items-center">
+      <span class="badge bg-info-subtle text-info-emphasis">ATS: {{ job.report.external_ats.ats or 'generic' }}</span>
+      {% if job.report.external_ats.submit_confirmed %}
+        <span class="badge bg-success-subtle text-success-emphasis">Submitted</span>
+      {% else %}
+        <span class="badge bg-warning-subtle text-warning-emphasis">Manual Review Needed</span>
+      {% endif %}
+    </div>
+    <ul class="small mb-1 ps-3 mt-1">
+      <li>Fields filled: {{ job.report.external_ats.fields_filled or 0 }}</li>
+      <li>Selects filled: {{ job.report.external_ats.selects_filled or 0 }}</li>
+      <li>Checkboxes checked: {{ job.report.external_ats.checkboxes_checked or 0 }}</li>
+      <li>Steps attempted: {{ job.report.external_ats.steps_attempted or 0 }}</li>
+      <li>CV uploaded: {{ 'Yes' if job.report.external_ats.cv_uploaded else 'No' }}</li>
+    </ul>
+    {% if job.report.external_ats.manual_takeover_reason %}
+    <div class="small text-muted">Manual takeover reason: {{ job.report.external_ats.manual_takeover_reason }}</div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if show_uploads %}
+    {% if has_uploads %}
+    <div class="mb-2">
+      <strong class="small">📎 Uploaded Documents:</strong>
+      <ul class="mb-1 small ps-3 mt-1">
+        {% for f in job.report.uploaded_files %}
+        <li>{{ f }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% else %}
+    <div class="mb-2 small text-muted">📎 <em>No upload data saved for this job.</em></div>
+    {% endif %}
+  {% endif %}
+
+  {% if has_skills %}
+  <div class="mb-2">
+    <strong class="small">🧩 Skill Match:</strong>
+    <div class="small mt-1 d-flex flex-wrap gap-2 align-items-center">
+      <span class="badge bg-primary-subtle text-primary-emphasis">
+        {{ ((job.report.skills_analysis.match_percentage or 0) * 100)|int }}% match
+      </span>
+      {% if job.report.skills_analysis.job_skills %}
+      <span class="badge bg-secondary-subtle text-secondary-emphasis">
+        {{ job.report.skills_analysis.job_skills|length }} job skills detected
+      </span>
+      {% endif %}
+    </div>
+    {% if job.report.skills_analysis.missing_skills %}
+    <div class="small mt-2"><strong>Missing:</strong></div>
+    <div class="d-flex flex-wrap gap-1 mt-1">
+      {% for skill in job.report.skills_analysis.missing_skills %}
+      <span class="badge bg-danger-subtle text-danger">{{ skill }}</span>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="small text-muted mt-2">No missing skills detected from the extracted job requirements.</div>
+    {% endif %}
+    {% if job.report.skills_analysis.matched_skills %}
+    <div class="small mt-2"><strong>Matched:</strong></div>
+    <div class="d-flex flex-wrap gap-1 mt-1">
+      {% for skill in job.report.skills_analysis.matched_skills[:8] %}
+      <span class="badge bg-success-subtle text-success">{{ skill }}</span>
+      {% endfor %}
+      {% if job.report.skills_analysis.matched_skills|length > 8 %}
+      <span class="badge bg-secondary-subtle text-secondary">+{{ job.report.skills_analysis.matched_skills|length - 8 }} more</span>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="mb-2 small text-muted">🧩 <em>No skill analysis saved for this job.</em></div>
+  {% endif %}
+
+  {% if has_requirements %}
+  <div class="mb-2">
+    <strong class="small">📋 Requirements Snapshot:</strong>
+    <div class="small text-muted mt-1">{{ job.report.requirements_summary }}</div>
+  </div>
+  {% else %}
+  <div class="mb-2 small text-muted">📋 <em>No captured requirements snapshot for this job.</em></div>
+  {% endif %}
+
+  {% if has_questions %}
+  <div>
+    <strong class="small">💬 Answered Questions:</strong>
+    <table class="table table-sm table-borderless mb-0 small mt-1">
+      {% for pair in job.report.qa_pairs %}
+      <tr>
+        <td class="text-muted fw-semibold pe-2" style="width:45%;word-break:break-word;">{{ pair.q }}</td>
+        <td style="word-break:break-word;">{{ pair.a }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% else %}
+  <div class="small text-muted">💬 <em>No Q&amp;A data saved for this job.</em></div>
+  {% endif %}
+{% endmacro %}
+
 <div class="row align-items-center mb-4">
   <div class="col">
     <h3 class="fw-bold mb-0"><i class="bi bi-speedometer2 me-2 text-primary"></i>Dashboard</h3>
@@ -490,57 +601,7 @@
             </tr>
             <tr class="collapse" id="report-{{ loop_idx }}">
               <td colspan="6" class="bg-light p-2">
-                {% if job.report and job.report.external_ats %}
-                <div class="mb-2">
-                  <strong class="small">🌐 External ATS Report:</strong>
-                  <div class="small mt-1">
-                    <span class="badge bg-info-subtle text-info-emphasis">ATS: {{ job.report.external_ats.ats or 'generic' }}</span>
-                    {% if job.report.external_ats.submit_confirmed %}
-                      <span class="badge bg-success-subtle text-success-emphasis">Submitted</span>
-                    {% else %}
-                      <span class="badge bg-warning-subtle text-warning-emphasis">Manual Review Needed</span>
-                    {% endif %}
-                  </div>
-                  <ul class="small mb-1 ps-3 mt-1">
-                    <li>Fields filled: {{ job.report.external_ats.fields_filled or 0 }}</li>
-                    <li>Selects filled: {{ job.report.external_ats.selects_filled or 0 }}</li>
-                    <li>Checkboxes checked: {{ job.report.external_ats.checkboxes_checked or 0 }}</li>
-                    <li>Steps attempted: {{ job.report.external_ats.steps_attempted or 0 }}</li>
-                    <li>CV uploaded: {{ 'Yes' if job.report.external_ats.cv_uploaded else 'No' }}</li>
-                  </ul>
-                  {% if job.report.external_ats.manual_takeover_reason %}
-                  <div class="small text-muted">Manual takeover reason: {{ job.report.external_ats.manual_takeover_reason }}</div>
-                  {% endif %}
-                </div>
-                {% endif %}
-
-                {% if job.report and job.report.uploaded_files %}
-                <div class="mb-2">
-                  <strong class="small">📎 Uploaded Documents:</strong>
-                  <ul class="mb-1 small ps-3 mt-1">
-                    {% for f in job.report.uploaded_files %}
-                    <li>{{ f }}</li>
-                    {% endfor %}
-                  </ul>
-                </div>
-                {% else %}
-                <div class="mb-2 small text-muted">📎 <em>No upload data (job submitted before reporting was enabled)</em></div>
-                {% endif %}
-                {% if job.report and job.report.qa_pairs %}
-                <div>
-                  <strong class="small">💬 Answered Questions:</strong>
-                  <table class="table table-sm table-borderless mb-0 small mt-1">
-                    {% for pair in job.report.qa_pairs %}
-                    <tr>
-                      <td class="text-muted fw-semibold pe-2" style="width:45%;word-break:break-word;">{{ pair.q }}</td>
-                      <td style="word-break:break-word;">{{ pair.a }}</td>
-                    </tr>
-                    {% endfor %}
-                  </table>
-                </div>
-                {% else %}
-                <div class="small text-muted">💬 <em>No Q&amp;A data (job submitted before reporting was enabled)</em></div>
-                {% endif %}
+                {{ render_job_report(job, show_uploads=true) }}
               </td>
             </tr>
             {% endfor %}
@@ -572,10 +633,12 @@
               <th>Status</th>
               <th>Reason</th>
               <th>ATS Report</th>
+              <th>Details</th>
             </tr>
           </thead>
           <tbody>
             {% for job in failed_jobs %}
+            {% set failed_loop_idx = loop.index0 %}
             <tr>
               <td class="small text-nowrap">{{ job.time }}</td>
               <td class="small">
@@ -604,6 +667,17 @@
                 {% else %}
                   <span class="text-muted">No external report</span>
                 {% endif %}
+              </td>
+              <td class="small">
+                <button class="btn btn-outline-secondary btn-sm py-0 px-1" type="button"
+                  data-bs-toggle="collapse" data-bs-target="#failed-report-{{ failed_loop_idx }}" aria-expanded="false">
+                  <i class="bi bi-list-check"></i> Report
+                </button>
+              </td>
+            </tr>
+            <tr class="collapse" id="failed-report-{{ failed_loop_idx }}">
+              <td colspan="7" class="bg-light p-2">
+                {{ render_job_report(job, show_uploads=true) }}
               </td>
             </tr>
             {% endfor %}

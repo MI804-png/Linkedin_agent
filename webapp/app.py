@@ -33,6 +33,8 @@ from cryptography.fernet import Fernet
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_FOLDER = BASE_DIR / "uploads"
 USER_DATA_FOLDER = BASE_DIR / "user_data"
+STUDY_GUIDES_FOLDER = BASE_DIR.parent / "linkedin_bot" / "study_guides"
+SHARED_APPLIED_LOG = BASE_DIR.parent / "linkedin_bot" / "applied_jobs.json"
 UPLOAD_FOLDER.mkdir(exist_ok=True)
 USER_DATA_FOLDER.mkdir(exist_ok=True)
 
@@ -119,7 +121,7 @@ class UserProfile(db.Model):
     phone = db.Column(db.String(64), default="")
     location = db.Column(db.String(128), default="")
     graduation_year = db.Column(db.String(8), default="")
-    experience_years = db.Column(db.String(8), default="")
+    experience_years = db.Column(db.String(8), default="5")
     work_auth_answer = db.Column(db.Text, default="")
     salary_answer = db.Column(db.Text, default="")
 
@@ -130,6 +132,8 @@ class UserProfile(db.Model):
     willing_to_work_onsite = db.Column(db.Boolean, default=False)
     willing_to_work_remote = db.Column(db.Boolean, default=True)
     current_job_title = db.Column(db.String(128), default="")
+    job_seniority = db.Column(db.String(16), default="")
+    job_seniority_custom = db.Column(db.String(128), default="")
     networking_title = db.Column(db.String(128), default="")
     years_management_experience = db.Column(db.String(8), default="0")
     highest_education = db.Column(db.String(128), default="")
@@ -184,6 +188,63 @@ class UserProfile(db.Model):
     @property
     def keywords_list(self) -> list[str]:
         return [k.strip() for k in self.keywords.splitlines() if k.strip()]
+
+    @property
+    def seniority_label(self) -> str:
+        seniority = (self.job_seniority or "").strip().lower()
+        if seniority == "junior":
+            return "Junior"
+        if seniority == "senior":
+            return "Senior"
+        if seniority == "other":
+            return re.sub(r"\s+", " ", (self.job_seniority_custom or "").strip())
+        return ""
+
+    def _apply_seniority_to_keyword(self, keyword: str) -> str:
+        cleaned = re.sub(r"\s+", " ", (keyword or "").strip())
+        seniority = self.seniority_label
+        if not cleaned or not seniority:
+            return cleaned
+
+        prefix_pattern = (
+            r"^(?:junior|jr\.?|senior|sr\.?|mid(?:-level)?|middle|lead|principal|staff|"
+            r"entry[- ]level|intern(?:ship)?|graduate)\s+"
+        )
+        base_keyword = re.sub(prefix_pattern, "", cleaned, flags=re.IGNORECASE).strip()
+        return f"{seniority} {base_keyword or cleaned}".strip()
+
+    @property
+    def search_job_title(self) -> str:
+        return self._apply_seniority_to_keyword(self.current_job_title)
+
+    @property
+    def search_keywords_list(self) -> list[str]:
+        base_keywords = self.keywords_list
+        if not base_keywords:
+            return []
+
+        ordered_keywords: list[str] = []
+        seen: set[str] = set()
+
+        def _add(keyword: str) -> None:
+            cleaned = re.sub(r"\s+", " ", (keyword or "").strip())
+            if not cleaned:
+                return
+            key = cleaned.lower()
+            if key in seen:
+                return
+            seen.add(key)
+            ordered_keywords.append(cleaned)
+
+        seniority = self.seniority_label
+        if seniority:
+            for keyword in base_keywords:
+                _add(self._apply_seniority_to_keyword(keyword))
+
+        for keyword in base_keywords:
+            _add(keyword)
+
+        return ordered_keywords
 
     @property
     def locations_list(self) -> list[str]:
@@ -298,6 +359,145 @@ def ensure_api_token(user: User) -> str:
     raise RuntimeError("Could not generate API token")
 
 
+def _coerce_string_list(values: object) -> list[str]:
+    if not isinstance(values, (list, tuple, set)):
+        return []
+
+    items: list[str] = []
+    for value in values:
+        text_value = str(value).strip()
+        if text_value:
+            items.append(text_value)
+    return items
+
+
+def _shorten_text(value: str, limit: int = 320) -> str:
+    text_value = re.sub(r"\s+", " ", (value or "").strip())
+    if len(text_value) <= limit:
+        return text_value
+
+    shortened = text_value[: limit - 3].rsplit(" ", 1)[0].rstrip(" ,;:")
+    return f"{shortened or text_value[: limit - 3]}..."
+
+
+def _load_requirements_summary(job_id: str) -> str:
+    if not job_id or not STUDY_GUIDES_FOLDER.exists():
+        return ""
+
+    try:
+        candidates = sorted(STUDY_GUIDES_FOLDER.glob(f"{job_id}_*_requirements.txt"), reverse=True)
+    except OSError:
+        return ""
+
+    for candidate in candidates:
+        try:
+            raw_text = candidate.read_text(encoding="utf-8")
+        except OSError:
+            continue
+
+        content_lines = []
+        for line in raw_text.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith(("Title:", "Company:", "URL:")):
+                continue
+            content_lines.append(stripped)
+
+        summary = _shorten_text(" ".join(content_lines), limit=420)
+        if summary:
+            return summary
+
+    return ""
+
+
+def _load_shared_job_index() -> dict[str, dict]:
+    if not SHARED_APPLIED_LOG.exists():
+        return {}
+
+    try:
+        raw_entries = json.loads(SHARED_APPLIED_LOG.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+    if not isinstance(raw_entries, list):
+        return {}
+
+    shared_index: dict[str, dict] = {}
+    for entry in reversed(raw_entries):
+        if not isinstance(entry, dict):
+            continue
+        job_id = str(entry.get("job_id") or "").strip()
+        if not job_id or job_id in shared_index:
+            continue
+        if entry.get("report") or entry.get("missing_skills"):
+            shared_index[job_id] = entry
+    return shared_index
+
+
+def _normalize_skills_analysis(entry: dict, report: dict) -> dict:
+    raw_analysis = report.get("skills_analysis")
+    if not isinstance(raw_analysis, dict):
+        raw_analysis = entry.get("missing_skills")
+    if not isinstance(raw_analysis, dict):
+        return {}
+
+    missing_skills = _coerce_string_list(raw_analysis.get("missing_skills", raw_analysis.get("missing", [])))
+    matched_skills = _coerce_string_list(raw_analysis.get("matched_skills", raw_analysis.get("matched", [])))
+    job_skills = _coerce_string_list(raw_analysis.get("job_skills", []))
+
+    try:
+        match_percentage = float(raw_analysis.get("match_percentage", 0) or 0)
+    except (TypeError, ValueError):
+        match_percentage = 0.0
+
+    normalized = {
+        "missing_skills": missing_skills,
+        "matched_skills": matched_skills,
+        "job_skills": job_skills,
+        "match_percentage": max(0.0, min(1.0, match_percentage)),
+    }
+
+    if any(normalized[key] for key in ("missing_skills", "matched_skills", "job_skills")) or normalized["match_percentage"]:
+        return normalized
+    return {}
+
+
+def _normalize_job_report(entry: dict, fallback_entry: dict | None = None) -> dict:
+    raw_report = entry.get("report")
+    if not isinstance(raw_report, dict) and isinstance(fallback_entry, dict):
+        raw_report = fallback_entry.get("report")
+    report = dict(raw_report) if isinstance(raw_report, dict) else {}
+
+    merged_entry = dict(fallback_entry) if isinstance(fallback_entry, dict) else {}
+    merged_entry.update(entry)
+
+    skills_analysis = _normalize_skills_analysis(merged_entry, report)
+    if skills_analysis:
+        report["skills_analysis"] = skills_analysis
+
+    requirements_summary = str(report.get("requirements_summary") or "").strip()
+    if not requirements_summary:
+        requirements_summary = _load_requirements_summary(str(entry.get("job_id") or "").strip())
+    if requirements_summary:
+        report["requirements_summary"] = requirements_summary
+
+    qa_pairs = report.get("qa_pairs")
+    if isinstance(qa_pairs, list):
+        report["qa_pairs"] = [pair for pair in qa_pairs if isinstance(pair, dict)]
+    else:
+        report["qa_pairs"] = []
+
+    uploaded_files = _coerce_string_list(report.get("uploaded_files", []))
+    if uploaded_files:
+        report["uploaded_files"] = uploaded_files
+    elif "uploaded_files" in report:
+        report["uploaded_files"] = []
+
+    if not isinstance(report.get("external_ats"), dict):
+        report["external_ats"] = {}
+
+    return report
+
+
 def _load_recent_job_events(user_id: int, limit: int = 100) -> tuple[list[dict], list[dict]]:
     """Load recent submitted/failed job events from the per-user job log."""
     jobs_file = USER_DATA_FOLDER / str(user_id) / "applied_jobs.json"
@@ -324,6 +524,8 @@ def _load_recent_job_events(user_id: int, limit: int = 100) -> tuple[list[dict],
     if not raw:
         return [], []
 
+    shared_job_index = _load_shared_job_index()
+
     submitted_jobs: list[dict] = []
     failed_jobs: list[dict] = []
 
@@ -344,7 +546,8 @@ def _load_recent_job_events(user_id: int, limit: int = 100) -> tuple[list[dict],
             except ValueError:
                 pass
 
-        raw_report = entry.get("report") or {}
+        fallback_entry = shared_job_index.get(str(entry.get("job_id") or "").strip())
+        raw_report = _normalize_job_report(entry, fallback_entry=fallback_entry)
         record = {
             "time": time_display,
             "title": (entry.get("title") or "").strip() or f"Job {entry.get('job_id') or ''}".strip(),
@@ -489,7 +692,10 @@ def api_ext_config(user):
         "experience_years": profile.experience_years,
         "salary_answer": profile.salary_answer,
         "work_auth_answer": profile.work_auth_answer,
-        "keywords": profile.keywords_list,
+        "job_seniority": profile.job_seniority or "",
+        "job_seniority_custom": profile.job_seniority_custom or "",
+        "search_job_title": profile.search_job_title or profile.current_job_title,
+        "keywords": profile.search_keywords_list or profile.keywords_list,
         "locations": profile.locations_list,
         "workplace_type": profile.workplace_type or "all",
         "max_applications": profile.max_applications,
@@ -799,6 +1005,11 @@ def profile():
         p.willing_to_work_onsite = bool(request.form.get("willing_to_work_onsite"))
         p.willing_to_work_remote = bool(request.form.get("willing_to_work_remote"))
         p.current_job_title = request.form.get("current_job_title", "").strip()
+        seniority = (request.form.get("job_seniority", "") or "").strip().lower()
+        p.job_seniority = seniority if seniority in {"", "junior", "senior", "other"} else ""
+        p.job_seniority_custom = request.form.get("job_seniority_custom", "").strip()
+        if p.job_seniority != "other":
+            p.job_seniority_custom = ""
         p.networking_title = request.form.get("networking_title", "").strip()
         p.years_management_experience = request.form.get("years_management_experience", "0").strip()
         p.highest_education = request.form.get("highest_education", "").strip()
@@ -1322,6 +1533,20 @@ def ensure_schema_updates() -> None:
                         db.session.execute(text("ALTER TABLE user_profiles ADD COLUMN networking_title VARCHAR(128) DEFAULT ''"))
                     elif dialect == "postgresql":
                         db.session.execute(text("ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS networking_title VARCHAR(128) DEFAULT ''"))
+                    db.session.commit()
+
+                if "job_seniority" not in profile_cols:
+                    if dialect == "sqlite":
+                        db.session.execute(text("ALTER TABLE user_profiles ADD COLUMN job_seniority VARCHAR(16) DEFAULT ''"))
+                    elif dialect == "postgresql":
+                        db.session.execute(text("ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS job_seniority VARCHAR(16) DEFAULT ''"))
+                    db.session.commit()
+
+                if "job_seniority_custom" not in profile_cols:
+                    if dialect == "sqlite":
+                        db.session.execute(text("ALTER TABLE user_profiles ADD COLUMN job_seniority_custom VARCHAR(128) DEFAULT ''"))
+                    elif dialect == "postgresql":
+                        db.session.execute(text("ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS job_seniority_custom VARCHAR(128) DEFAULT ''"))
                     db.session.commit()
 
                 if "max_network_companies_per_run" not in profile_cols:

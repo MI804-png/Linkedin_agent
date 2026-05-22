@@ -44,7 +44,8 @@
         <div class="col-md-3">
           <label class="form-label fw-semibold">Years of Experience</label>
           <input type="text" name="experience_years" class="form-control"
-                 value="{{ p.experience_years }}" placeholder="3">
+                 value="{{ p.experience_years }}" placeholder="5">
+          <div class="form-text">Used as the fallback only when the CV does not expose a clear years-of-experience value.</div>
         </div>
         <div class="col-md-6">
           <label class="form-label fw-semibold">Work Authorization Answer</label>
@@ -100,6 +101,21 @@
           <label class="form-label fw-semibold">Current Job Title</label>
           <input type="text" name="current_job_title" class="form-control"
                  value="{{ p.current_job_title }}" placeholder="e.g. Full Stack Developer">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">Preferred Seniority for Search</label>
+          <select name="job_seniority" id="jobSenioritySelect" class="form-select">
+            <option value="" {{ "selected" if not (p.job_seniority or '') }}>No preference</option>
+            <option value="junior" {{ "selected" if (p.job_seniority or '') == 'junior' }}>Junior</option>
+            <option value="senior" {{ "selected" if (p.job_seniority or '') == 'senior' }}>Senior</option>
+            <option value="other" {{ "selected" if (p.job_seniority or '') == 'other' }}>Other</option>
+          </select>
+          <div class="form-text">Used to tailor job-search keywords such as Junior or Senior variants.</div>
+        </div>
+        <div class="col-md-4" id="jobSeniorityCustomGroup" style="{{ '' if (p.job_seniority or '') == 'other' else 'display:none' }}">
+          <label class="form-label fw-semibold">Custom Seniority Label</label>
+          <input type="text" name="job_seniority_custom" id="jobSeniorityCustomInput" class="form-control"
+                 value="{{ p.job_seniority_custom or '' }}" placeholder="e.g. Mid-Level, Lead, Intern">
         </div>
         <div class="col-md-4">
           <label class="form-label fw-semibold">Networking Title</label>
@@ -220,9 +236,25 @@
   </div>
 
   <script>
-    document.getElementById('licenseSwitch').addEventListener('change', function() {
-      document.getElementById('licenseCatGroup').style.display = this.checked ? '' : 'none';
+    const licenseSwitch = document.getElementById('licenseSwitch');
+    const licenseCatGroup = document.getElementById('licenseCatGroup');
+    const jobSenioritySelect = document.getElementById('jobSenioritySelect');
+    const jobSeniorityCustomGroup = document.getElementById('jobSeniorityCustomGroup');
+    const jobSeniorityCustomInput = document.getElementById('jobSeniorityCustomInput');
+
+    licenseSwitch.addEventListener('change', function() {
+      licenseCatGroup.style.display = this.checked ? '' : 'none';
     });
+
+    if (jobSenioritySelect) {
+      jobSenioritySelect.addEventListener('change', function() {
+        const showCustom = this.value === 'other';
+        jobSeniorityCustomGroup.style.display = showCustom ? '' : 'none';
+        if (!showCustom && jobSeniorityCustomInput) {
+          jobSeniorityCustomInput.value = '';
+        }
+      });
+    }
   </script>
 
   <!-- ── CV Upload ─────────────────────────────────────────────────────────── -->
