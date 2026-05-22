@@ -1,8 +1,15 @@
 .env
+.scheduler.env
 __pycache__/
 *.pyc
 playwright_state.json
 run_history.json
 applied_jobs.json
 state.json
+run_watch_scheduler.log
+run_watch_scheduler_state.json
+scheduler_webapp_stdout.log
+scheduler_webapp_stderr.log
+run_watch_scheduler.launchd.out.log
+run_watch_scheduler.launchd.err.log
 logs/

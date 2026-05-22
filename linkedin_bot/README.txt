@@ -27,3 +27,23 @@ Notes:
 - Do not commit .env to source control.
 - Priority queue is enabled by default: jobs discovered from LinkedIn notifications are processed before regular keyword/location search.
 - To prioritize jobs from LinkedIn Gmail alerts, add full job URLs to priority_job_links.txt (one URL per line) in this folder.
+
+Automatic Run and Watch scheduler (desktop-only):
+1) Copy .scheduler.env.example to .scheduler.env and set:
+   AUTOAPPLY_ACCOUNT_EMAIL=your local dashboard account email
+   AUTOAPPLY_ACCOUNT_PASSWORD=your local dashboard account password
+   Optional: AUTOAPPLY_ACCOUNT_USER_ID=1 if you prefer selecting the local user by id
+2) Keep auto-apply enabled in the local dashboard profile and set the scheduled UTC time there.
+3) Validate the scheduler without triggering a run:
+   python run_watch_scheduler.py --check
+4) Windows install:
+   powershell -ExecutionPolicy Bypass -File .\install_run_watch_scheduler_windows.ps1
+5) macOS install:
+   bash ./install_run_watch_scheduler_mac.sh
+
+How it behaves:
+- The scheduler starts when you log in on Windows or macOS.
+- It checks the local dashboard schedule every minute.
+- When the scheduled UTC minute matches, it logs into the local dashboard and triggers the existing Run and Watch action.
+- The actual search filter "within this many days" comes from the selected dashboard profile (posted_days_ago).
+- Optional immediate login-time run: set AUTOAPPLY_RUN_ON_LOGIN=1 in .scheduler.env.
