@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 from pathlib import Path
 import sys
@@ -11,6 +12,7 @@ from config import MissingCredentialError, RuntimePaths, load_runtime_config, va
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="LinkedIn Auto-Apply Bot")
+    parser.add_argument("--user-id", type=int, default=None, help="Load runtime config for a webapp user profile.")
     parser.add_argument("--dry-run", action="store_true", help="Search and inspect only, no submissions.")
     parser.add_argument("--resume", action="store_true", help="Resume from saved cursor in state.json.")
     parser.add_argument("--headless", action="store_true", help="Run browser in headless mode.")
@@ -20,6 +22,28 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--network", action="store_true", help="Run LinkedIn networking campaign (connect with recruiters at big companies).")
     parser.add_argument("--interviews", action="store_true", help="Scan LinkedIn messages for interview invites and generate study guides.")
     return parser.parse_args()
+
+
+def _load_config_from_args(args: argparse.Namespace):
+    if args.user_id is None:
+        config = load_runtime_config(headless=args.headless)
+        if args.apply_type:
+            config.settings.apply_type = args.apply_type
+        return config
+
+    webapp_dir = Path(__file__).resolve().parent.parent / "webapp"
+    if str(webapp_dir) not in sys.path:
+        sys.path.insert(0, str(webapp_dir))
+
+    webapp_app = importlib.import_module("app")
+    webapp_bot_runner = importlib.import_module("bot_runner")
+
+    with webapp_app.app.app_context():
+        return webapp_bot_runner.build_config_for_user(
+            args.user_id,
+            watch_browser=not args.headless,
+            apply_type_override=args.apply_type,
+        )
 
 
 def run_validation() -> int:
@@ -50,9 +74,12 @@ def main() -> int:
 
     if args.network:
         try:
-            config = load_runtime_config(headless=args.headless)
+            config = _load_config_from_args(args)
         except MissingCredentialError as exc:
             print(str(exc))
+            return 2
+        except Exception as exc:
+            print(f"Could not load runtime config: {exc}")
             return 2
         bot = LinkedInAutoApplyBot(config, dry_run=False, resume=False)
         try:
@@ -66,9 +93,12 @@ def main() -> int:
 
     if args.interviews:
         try:
-            config = load_runtime_config(headless=args.headless)
+            config = _load_config_from_args(args)
         except MissingCredentialError as exc:
             print(str(exc))
+            return 2
+        except Exception as exc:
+            print(f"Could not load runtime config: {exc}")
             return 2
         bot = LinkedInAutoApplyBot(config, dry_run=False, resume=False)
         try:
@@ -84,13 +114,13 @@ def main() -> int:
         return run_validation()
 
     try:
-        config = load_runtime_config(headless=args.headless)
+        config = _load_config_from_args(args)
     except MissingCredentialError as exc:
         print(str(exc))
         return 2
-
-    if args.apply_type:
-        config.settings.apply_type = args.apply_type
+    except Exception as exc:
+        print(f"Could not load runtime config: {exc}")
+        return 2
 
     bot = LinkedInAutoApplyBot(
         config,

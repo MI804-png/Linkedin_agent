@@ -356,9 +356,21 @@
     </div>
   </div>
   <div class="col-sm-4">
-    <div class="card stat-card {% if runs and runs[0].status == 'error' %}red{% else %}blue{% endif %} p-3">
-      <div class="text-muted small">Last Run Status</div>
-      <div class="display-6 fw-bold text-capitalize">{{ runs[0].status if runs else '–' }}</div>
+    {% set recent_run = last_completed_run if last_completed_run is defined else None %}
+    <div class="card stat-card {% if recent_run and recent_run.status == 'error' %}red{% else %}blue{% endif %} p-3">
+      <div class="text-muted small">Last Completed Run</div>
+      <div class="display-6 fw-bold text-capitalize">{{ recent_run.status if recent_run else '–' }}</div>
+      {% if recent_run %}
+      <div class="small mt-2">
+        Run #{{ recent_run.id }}
+        <span class="text-muted">|</span>
+        Submitted <strong>{{ recent_run.submitted or 0 }}</strong>
+        <span class="text-muted">|</span>
+        Skipped <strong>{{ recent_run.skipped or 0 }}</strong>
+        <span class="text-muted">|</span>
+        Failures <strong>{{ recent_run.failures or 0 }}</strong>
+      </div>
+      {% endif %}
     </div>
   </div>
 </div>
@@ -384,11 +396,11 @@
 
           <div class="small text-muted mb-1">Success vs Failure Probability</div>
           <div class="progress" style="height: 16px;">
-            <div class="progress-bar bg-success" role="progressbar"
-                 style="width: {{ stats.success_probability }}%"
+            <div class="progress-bar bg-success js-width-bar" role="progressbar"
+              data-width="{{ stats.success_probability }}"
                  aria-valuenow="{{ stats.success_probability }}" aria-valuemin="0" aria-valuemax="100"></div>
-            <div class="progress-bar bg-danger" role="progressbar"
-                 style="width: {{ stats.failure_probability }}%"
+            <div class="progress-bar bg-danger js-width-bar" role="progressbar"
+              data-width="{{ stats.failure_probability }}"
                  aria-valuenow="{{ stats.failure_probability }}" aria-valuemin="0" aria-valuemax="100"></div>
           </div>
           <div class="small mt-2">
@@ -402,7 +414,10 @@
       <div class="col-lg-8">
         <div class="border rounded p-3 h-100">
           <div class="small text-muted mb-2">Last {{ stats.labels|length }} Runs: Submitted vs Failed</div>
-          <canvas id="jobsOutcomeChart" height="170"></canvas>
+            <canvas id="jobsOutcomeChart" height="170"
+              data-labels='{{ stats.labels | tojson | forceescape }}'
+              data-submitted='{{ stats.submitted_series | tojson | forceescape }}'
+              data-failed='{{ stats.failed_series | tojson | forceescape }}'></canvas>
           {% if not stats.labels %}
           <div class="small text-muted mt-2">Run the bot to generate graph data.</div>
           {% endif %}
@@ -705,6 +720,7 @@
               <th>When</th>
               <th>Company / Job</th>
               <th>Missing Skills</th>
+              <th>Requirements</th>
               <th>Confidence</th>
             </tr>
           </thead>
@@ -731,13 +747,20 @@
                   <span class="text-muted">-</span>
                 {% endif %}
               </td>
+              <td class="small text-muted" style="max-width: 320px; white-space: normal;">
+                {% if report.requirements_summary %}
+                  {{ report.requirements_summary }}
+                {% else %}
+                  <span class="text-muted">-</span>
+                {% endif %}
+              </td>
               <td class="small">
                 {% if report.confidence %}
                   <div class="d-flex align-items-center gap-2">
                     <div style="width: 60px;">
                       <div class="progress" role="progressbar" style="height: 20px;">
-                        <div class="progress-bar {% if report.confidence >= 0.8 %}bg-success{% elif report.confidence >= 0.6 %}bg-warning{% else %}bg-danger{% endif %}" 
-                             style="width: {{ (report.confidence * 100)|int }}%"></div>
+                            <div class="progress-bar js-width-bar {% if report.confidence >= 0.8 %}bg-success{% elif report.confidence >= 0.6 %}bg-warning{% else %}bg-danger{% endif %}"
+                              data-width="{{ (report.confidence * 100)|int }}"></div>
                       </div>
                     </div>
                     <span>{{ (report.confidence * 100)|int }}%</span>
@@ -914,9 +937,17 @@ function drawJobsOutcomeChart() {
   var canvas = document.getElementById('jobsOutcomeChart');
   if (!canvas) return;
 
-  var labels = {{ stats.labels | tojson }};
-  var submitted = {{ stats.submitted_series | tojson }};
-  var failed = {{ stats.failed_series | tojson }};
+  var labels = [];
+  var submitted = [];
+  var failed = [];
+
+  try {
+    labels = JSON.parse(canvas.dataset.labels || '[]');
+    submitted = JSON.parse(canvas.dataset.submitted || '[]');
+    failed = JSON.parse(canvas.dataset.failed || '[]');
+  } catch (error) {
+    console.warn('Failed to parse dashboard analytics data', error);
+  }
 
   if (!labels.length) {
     var emptyCtx = canvas.getContext('2d');
@@ -1006,6 +1037,15 @@ function drawJobsOutcomeChart() {
   ctx.fillText('Failed', padLeft + 106, 11);
 }
 
+function applyDashboardBarWidths() {
+  document.querySelectorAll('.js-width-bar').forEach(function(node) {
+    var raw = Number(node.dataset.width || 0);
+    var width = Math.max(0, Math.min(100, raw));
+    node.style.width = width + '%';
+  });
+}
+
+applyDashboardBarWidths();
 drawJobsOutcomeChart();
 window.addEventListener('resize', drawJobsOutcomeChart);
 

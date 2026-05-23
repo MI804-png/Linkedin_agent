@@ -24,39 +24,40 @@
         <div class="col-md-6">
           <label class="form-label fw-semibold">Full Name *</label>
           <input type="text" name="full_name" class="form-control" required
-                 value="{{ p.full_name }}" placeholder="e.g. John Smith">
+             maxlength="256" value="{{ p.full_name }}" placeholder="e.g. John Smith">
         </div>
         <div class="col-md-6">
           <label class="form-label fw-semibold">Phone Number *</label>
-          <input type="text" name="phone" class="form-control"
+           <input type="text" name="phone" class="form-control" required maxlength="32"
+             pattern="^[+()0-9\s-]{7,32}$" inputmode="tel"
                  value="{{ p.phone }}" placeholder="+36 70 123 4567">
         </div>
         <div class="col-md-6">
           <label class="form-label fw-semibold">Current Location *</label>
-          <input type="text" name="location" class="form-control"
+           <input type="text" name="location" class="form-control" required maxlength="128"
                  value="{{ p.location }}" placeholder="Budapest, Hungary">
         </div>
         <div class="col-md-3">
           <label class="form-label fw-semibold">Graduation Year</label>
-          <input type="text" name="graduation_year" class="form-control"
+           <input type="number" name="graduation_year" class="form-control" min="1900" max="2100" step="1"
                  value="{{ p.graduation_year }}" placeholder="2027">
         </div>
         <div class="col-md-3">
           <label class="form-label fw-semibold">Years of Experience</label>
-          <input type="text" name="experience_years" class="form-control"
+           <input type="number" name="experience_years" class="form-control" min="0" max="80" step="0.5"
                  value="{{ p.experience_years }}" placeholder="5">
           <div class="form-text">Used as the fallback only when the CV does not expose a clear years-of-experience value.</div>
         </div>
         <div class="col-md-6">
           <label class="form-label fw-semibold">Work Authorization Answer</label>
-          <input type="text" name="work_auth_answer" class="form-control"
+           <input type="text" name="work_auth_answer" class="form-control" maxlength="500"
                  value="{{ p.work_auth_answer }}"
                  placeholder="Yes, I have a valid work permit.">
           <div class="form-text">Used when LinkedIn asks "Are you authorized to work in X?"</div>
         </div>
         <div class="col-md-6">
           <label class="form-label fw-semibold">Salary / Compensation Answer</label>
-          <input type="text" name="salary_answer" class="form-control"
+          <input type="text" name="salary_answer" class="form-control" maxlength="500"
                  value="{{ p.salary_answer }}"
                  placeholder="Negotiable / 1,000,000 HUF/month">
           <div class="form-text">Used when LinkedIn asks for expected salary.</div>
@@ -76,7 +77,7 @@
 
         <div class="col-md-4">
           <label class="form-label fw-semibold">Nationality</label>
-          <input type="text" name="nationality" class="form-control"
+          <input type="text" name="nationality" class="form-control" maxlength="64"
                  value="{{ p.nationality }}" placeholder="e.g. Egyptian">
         </div>
         <div class="col-md-4">
@@ -99,7 +100,7 @@
 
         <div class="col-md-4">
           <label class="form-label fw-semibold">Current Job Title</label>
-          <input type="text" name="current_job_title" class="form-control"
+          <input type="text" name="current_job_title" class="form-control" maxlength="128"
                  value="{{ p.current_job_title }}" placeholder="e.g. Full Stack Developer">
         </div>
         <div class="col-md-4">
@@ -114,12 +115,12 @@
         </div>
         <div class="col-md-4" id="jobSeniorityCustomGroup" style="{{ '' if (p.job_seniority or '') == 'other' else 'display:none' }}">
           <label class="form-label fw-semibold">Custom Seniority Label</label>
-          <input type="text" name="job_seniority_custom" id="jobSeniorityCustomInput" class="form-control"
+          <input type="text" name="job_seniority_custom" id="jobSeniorityCustomInput" class="form-control" maxlength="128"
                  value="{{ p.job_seniority_custom or '' }}" placeholder="e.g. Mid-Level, Lead, Intern">
         </div>
         <div class="col-md-4">
           <label class="form-label fw-semibold">Networking Title</label>
-          <input type="text" name="networking_title" class="form-control"
+          <input type="text" name="networking_title" class="form-control" maxlength="128"
                  value="{{ p.networking_title }}" placeholder="e.g. Software Engineer">
           <div class="form-text">Used by Follow Companies to choose role-matched target companies.</div>
         </div>
@@ -136,7 +137,7 @@
         </div>
         <div class="col-md-4">
           <label class="form-label fw-semibold">Field of Study</label>
-          <input type="text" name="field_of_study" class="form-control"
+          <input type="text" name="field_of_study" class="form-control" maxlength="128"
                  value="{{ p.field_of_study }}" placeholder="e.g. Computer Science Engineering">
         </div>
 
@@ -151,29 +152,29 @@
         </div>
         <div class="col-md-4">
           <label class="form-label fw-semibold">Years of Management Experience</label>
-          <input type="text" name="years_management_experience" class="form-control"
+          <input type="number" name="years_management_experience" class="form-control" min="0" max="80" step="0.5"
                  value="{{ p.years_management_experience or '0' }}" placeholder="0">
         </div>
         <div class="col-md-4">
           <label class="form-label fw-semibold">Languages Spoken</label>
-          <input type="text" name="languages_spoken" class="form-control"
+          <input type="text" name="languages_spoken" class="form-control" maxlength="1000"
                  value="{{ p.languages_spoken }}"
                  placeholder="Arabic (Native), English (Professional), Italian (Professional)">
         </div>
 
         <div class="col-md-6">
           <label class="form-label fw-semibold">LinkedIn Profile URL</label>
-          <input type="text" name="linkedin_url" class="form-control"
+          <input type="url" name="linkedin_url" class="form-control" maxlength="256"
                  value="{{ p.linkedin_url }}" placeholder="https://linkedin.com/in/your-profile">
         </div>
         <div class="col-md-3">
           <label class="form-label fw-semibold">GitHub URL</label>
-          <input type="text" name="github_url" class="form-control"
+          <input type="url" name="github_url" class="form-control" maxlength="256"
                  value="{{ p.github_url }}" placeholder="https://github.com/you">
         </div>
         <div class="col-md-3">
           <label class="form-label fw-semibold">Portfolio URL</label>
-          <input type="text" name="portfolio_url" class="form-control"
+          <input type="url" name="portfolio_url" class="form-control" maxlength="256"
                  value="{{ p.portfolio_url }}" placeholder="https://yoursite.com">
         </div>
 
@@ -227,7 +228,7 @@
 
         <div class="col-md-3" id="licenseCatGroup" style="{{ '' if p.has_drivers_license else 'display:none' }}">
           <label class="form-label fw-semibold">License Category</label>
-          <input type="text" name="drivers_license_category" class="form-control"
+          <input type="text" name="drivers_license_category" class="form-control" maxlength="16"
                  value="{{ p.drivers_license_category }}" placeholder="B">
         </div>
 
@@ -290,13 +291,13 @@
       <div class="row g-3">
         <div class="col-md-6">
           <label class="form-label fw-semibold">Job Keywords *</label>
-          <textarea name="keywords" class="form-control" rows="4"
+          <textarea name="keywords" class="form-control" rows="4" required maxlength="1500"
                     placeholder="One keyword per line:&#10;Software Developer&#10;Full Stack Developer&#10;Python Developer">{{ p.keywords }}</textarea>
           <div class="form-text">One keyword per line. The bot searches LinkedIn for each.</div>
         </div>
         <div class="col-md-6">
           <label class="form-label fw-semibold">Search Locations *</label>
-          <textarea name="search_locations" class="form-control" rows="4"
+          <textarea name="search_locations" class="form-control" rows="4" required maxlength="1000"
                     placeholder="Use commas or new lines:&#10;Hungary, Budapest, Remote">{{ p.search_locations }}</textarea>
           <div class="form-text">You can enter multiple locations on one line using commas, or use one per line.</div>
         </div>
@@ -371,12 +372,13 @@
       <div class="row g-3">
         <div class="col-md-6">
           <label class="form-label fw-semibold">LinkedIn Email *</label>
-          <input type="email" name="linkedin_email" class="form-control"
+           <input type="email" name="linkedin_email" class="form-control" required maxlength="256"
                  value="{{ p.linkedin_email }}" placeholder="you@example.com">
         </div>
         <div class="col-md-6">
           <label class="form-label fw-semibold">LinkedIn Password *</label>
-          <input type="password" name="linkedin_password" class="form-control"
+           <input type="password" name="linkedin_password" class="form-control" minlength="8"
+             {{ "required" if not p.linkedin_password_enc else "" }}
                  placeholder="{{ '••••••••  (leave blank to keep current)' if p.linkedin_password_enc else 'Enter password' }}">
           {% if p.linkedin_password_enc %}
           <div class="form-text text-success">

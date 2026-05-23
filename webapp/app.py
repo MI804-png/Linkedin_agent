@@ -16,6 +16,8 @@ import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
 from functools import wraps
+from types import SimpleNamespace
+from urllib.parse import urlparse
 
 from sqlalchemy import text, inspect, or_
 from sqlalchemy.exc import IntegrityError
@@ -80,9 +82,351 @@ def decrypt(ciphertext: str) -> str:
 
 ALLOWED_EXTENSIONS = {"pdf"}
 
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+PHONE_RE = re.compile(r"^[+()0-9\s-]{7,32}$")
+LANGUAGE_ENTRY_RE = re.compile(
+    r"^[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ' /-]*(?:\s*(?:\([^)]+\)|[:\-]\s*[^,;\n]+))?$"
+)
+COMPANY_INPUT_RE = re.compile(r"^[A-Za-z0-9À-ÿ&.,'()\-+/ ]{1,120}$")
+
+PROFILE_ALLOWED_SENIORITY = {"", "junior", "senior", "other"}
+PROFILE_ALLOWED_EDUCATION = {
+    "",
+    "High School",
+    "Associate's Degree",
+    "Bachelor's Degree",
+    "Master's Degree",
+    "PhD",
+}
+PROFILE_ALLOWED_ENGLISH_PROFICIENCY = {"Professional", "Conversational", "Basic", "Native"}
+PROFILE_ALLOWED_GENDER = {"", "Male", "Female", "Non-binary"}
+PROFILE_ALLOWED_VETERAN_STATUS = {"No", "Yes", "Prefer not to say"}
+PROFILE_ALLOWED_WORKPLACE_TYPES = {"all", "remote", "hybrid", "on_site"}
+PROFILE_ALLOWED_APPLY_TYPES = {"easy_apply", "all", "external_only"}
+
+# Blank saves should restore safe profile defaults for configurable fields.
+# Personal identity/contact fields still require explicit user input.
+PROFILE_BLANK_TEXT_DEFAULTS = {
+    "experience_years": "5",
+    "years_management_experience": "0",
+    "keywords": "Software Developer\nFull Stack Developer\nPython Developer",
+    "search_locations": "Hungary, Budapest, Remote",
+}
+PROFILE_BLANK_INTEGER_DEFAULTS = {
+    "max_applications": 25,
+    "max_network_companies_per_run": 20,
+    "posted_days_ago": 7,
+}
+
 
 def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def _collapse_spaces(value: str) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip())
+
+
+def _clean_single_line(value: str, *, max_length: int, label: str, errors: list[str], required: bool = False) -> str:
+    cleaned = _collapse_spaces(value)
+    if required and not cleaned:
+        errors.append(f"{label} is required.")
+    if cleaned and len(cleaned) > max_length:
+        errors.append(f"{label} must be {max_length} characters or fewer.")
+    return cleaned
+
+
+def _clean_multiline_text(value: str, *, max_length: int, label: str, errors: list[str], required: bool = False) -> str:
+    raw = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
+    lines = [_collapse_spaces(line) for line in raw.split("\n")]
+    cleaned = "\n".join(line for line in lines if line)
+    if required and not cleaned:
+        errors.append(f"{label} is required.")
+    if cleaned and len(cleaned) > max_length:
+        errors.append(f"{label} must be {max_length} characters or fewer.")
+    return cleaned
+
+
+def _validate_email(value: str, *, label: str, errors: list[str], required: bool = False) -> str:
+    cleaned = _clean_single_line(value, max_length=256, label=label, errors=errors, required=required).lower()
+    if cleaned and not EMAIL_RE.fullmatch(cleaned):
+        errors.append(f"{label} must be a valid email address.")
+    return cleaned
+
+
+def _validate_url(value: str, *, label: str, errors: list[str], allowed_hosts: tuple[str, ...] = ()) -> str:
+    cleaned = _clean_single_line(value, max_length=256, label=label, errors=errors)
+    if not cleaned:
+        return ""
+
+    parsed = urlparse(cleaned)
+    host = (parsed.netloc or "").lower()
+    if parsed.scheme not in {"http", "https"} or not host:
+        errors.append(f"{label} must be a valid http:// or https:// URL.")
+        return cleaned
+    if allowed_hosts and not any(host == allowed or host.endswith(f".{allowed}") for allowed in allowed_hosts):
+        errors.append(f"{label} must point to {allowed_hosts[0]}.")
+    return cleaned
+
+
+def _validate_choice(value: str, *, label: str, allowed: set[str], errors: list[str]) -> str:
+    cleaned = _collapse_spaces(value)
+    if cleaned not in allowed:
+        errors.append(f"{label} contains an unsupported value.")
+        return ""
+    return cleaned
+
+
+def _validate_integer(
+    value: str,
+    *,
+    label: str,
+    minimum: int,
+    maximum: int,
+    errors: list[str],
+    default: int | None = None,
+) -> int:
+    cleaned = _collapse_spaces(value)
+    if not cleaned:
+        if default is not None:
+            return default
+        errors.append(f"{label} is required.")
+        return minimum
+    try:
+        parsed = int(cleaned)
+    except ValueError:
+        errors.append(f"{label} must be a whole number between {minimum} and {maximum}.")
+        return minimum
+    if parsed < minimum or parsed > maximum:
+        errors.append(f"{label} must be between {minimum} and {maximum}.")
+    return max(minimum, min(maximum, parsed))
+
+
+def _validate_optional_number_text(
+    value: str,
+    *,
+    label: str,
+    maximum: float,
+    errors: list[str],
+    default: str = "",
+) -> str:
+    cleaned = _clean_single_line(value, max_length=8, label=label, errors=errors)
+    if not cleaned:
+        return default
+    if not re.fullmatch(r"\d+(?:\.\d+)?", cleaned):
+        errors.append(f"{label} must be a number between 0 and {int(maximum)}.")
+        return cleaned
+    parsed = float(cleaned)
+    if parsed < 0 or parsed > maximum:
+        errors.append(f"{label} must be between 0 and {int(maximum)}.")
+    return str(int(parsed)) if parsed.is_integer() else cleaned.rstrip("0").rstrip(".")
+
+
+def _validate_graduation_year(value: str, *, errors: list[str]) -> str:
+    cleaned = _clean_single_line(value, max_length=4, label="Graduation Year", errors=errors)
+    if not cleaned:
+        return ""
+    if not re.fullmatch(r"\d{4}", cleaned):
+        errors.append("Graduation Year must be a 4-digit year.")
+        return cleaned
+    year = int(cleaned)
+    if year < 1900 or year > 2100:
+        errors.append("Graduation Year must be between 1900 and 2100.")
+    return cleaned
+
+
+def _validate_phone(value: str, *, errors: list[str]) -> str:
+    cleaned = _clean_single_line(value, max_length=32, label="Phone Number", errors=errors, required=True)
+    digits = re.sub(r"\D", "", cleaned)
+    if cleaned and (not PHONE_RE.fullmatch(cleaned) or len(digits) < 7 or len(digits) > 15):
+        errors.append("Phone Number must contain a valid international phone format.")
+    return cleaned
+
+
+def _validate_languages_spoken(value: str, *, errors: list[str]) -> str:
+    cleaned = _clean_single_line(value, max_length=1000, label="Languages Spoken", errors=errors)
+    if not cleaned:
+        return ""
+
+    entries = [_collapse_spaces(part) for part in re.split(r"[,;\n]+", cleaned) if _collapse_spaces(part)]
+    invalid = [entry for entry in entries if not LANGUAGE_ENTRY_RE.fullmatch(entry)]
+    if invalid:
+        errors.append(
+            "Languages Spoken must use entries like 'English (Professional)' or 'Hungarian: Basic'."
+        )
+    return ", ".join(entries)
+
+
+def _build_profile_form_state(profile: "UserProfile", overrides: dict[str, object]) -> SimpleNamespace:
+    state = {column.name: getattr(profile, column.name) for column in profile.__table__.columns}
+    state.update({key: value for key, value in overrides.items() if key not in {"linkedin_password", "cv_file"}})
+    return SimpleNamespace(**state)
+
+
+def _validate_profile_submission(profile: "UserProfile", form, files) -> tuple[dict[str, object], list[str]]:
+    errors: list[str] = []
+    cleaned: dict[str, object] = {}
+
+    cleaned["full_name"] = _clean_single_line(
+        form.get("full_name", ""), max_length=256, label="Full Name", errors=errors, required=True
+    )
+    cleaned["phone"] = _validate_phone(form.get("phone", ""), errors=errors)
+    cleaned["location"] = _clean_single_line(
+        form.get("location", ""), max_length=128, label="Current Location", errors=errors, required=True
+    )
+    cleaned["graduation_year"] = _validate_graduation_year(form.get("graduation_year", ""), errors=errors)
+    cleaned["experience_years"] = _validate_optional_number_text(
+        form.get("experience_years", ""),
+        label="Years of Experience",
+        maximum=80,
+        errors=errors,
+        default=PROFILE_BLANK_TEXT_DEFAULTS["experience_years"],
+    )
+    cleaned["work_auth_answer"] = _clean_single_line(
+        form.get("work_auth_answer", ""), max_length=500, label="Work Authorization Answer", errors=errors
+    )
+    cleaned["salary_answer"] = _clean_single_line(
+        form.get("salary_answer", ""), max_length=500, label="Salary / Compensation Answer", errors=errors
+    )
+
+    cleaned["nationality"] = _clean_single_line(
+        form.get("nationality", ""), max_length=64, label="Nationality", errors=errors
+    )
+    cleaned["is_eu_citizen"] = bool(form.get("is_eu_citizen"))
+    cleaned["willing_to_relocate"] = bool(form.get("willing_to_relocate"))
+    cleaned["willing_to_work_onsite"] = bool(form.get("willing_to_work_onsite"))
+    cleaned["willing_to_work_remote"] = bool(form.get("willing_to_work_remote"))
+    cleaned["current_job_title"] = _clean_single_line(
+        form.get("current_job_title", ""), max_length=128, label="Current Job Title", errors=errors
+    )
+
+    seniority = _validate_choice(
+        form.get("job_seniority", ""), label="Preferred Seniority", allowed=PROFILE_ALLOWED_SENIORITY, errors=errors
+    )
+    cleaned["job_seniority"] = seniority
+    cleaned["job_seniority_custom"] = _clean_single_line(
+        form.get("job_seniority_custom", ""), max_length=128, label="Custom Seniority Label", errors=errors
+    )
+    if seniority == "other" and not cleaned["job_seniority_custom"]:
+        errors.append("Custom Seniority Label is required when Preferred Seniority is Other.")
+    if seniority != "other":
+        cleaned["job_seniority_custom"] = ""
+
+    cleaned["networking_title"] = _clean_single_line(
+        form.get("networking_title", ""), max_length=128, label="Networking Title", errors=errors
+    )
+    cleaned["years_management_experience"] = _validate_optional_number_text(
+        form.get("years_management_experience", "0"),
+        label="Years of Management Experience",
+        maximum=80,
+        errors=errors,
+        default=PROFILE_BLANK_TEXT_DEFAULTS["years_management_experience"],
+    )
+    cleaned["highest_education"] = _validate_choice(
+        form.get("highest_education", ""),
+        label="Highest Education Level",
+        allowed=PROFILE_ALLOWED_EDUCATION,
+        errors=errors,
+    )
+    cleaned["field_of_study"] = _clean_single_line(
+        form.get("field_of_study", ""), max_length=128, label="Field of Study", errors=errors
+    )
+    cleaned["english_proficiency"] = _validate_choice(
+        form.get("english_proficiency", "Professional"),
+        label="English Proficiency",
+        allowed=PROFILE_ALLOWED_ENGLISH_PROFICIENCY,
+        errors=errors,
+    ) or "Professional"
+    cleaned["languages_spoken"] = _validate_languages_spoken(form.get("languages_spoken", ""), errors=errors)
+    cleaned["has_drivers_license"] = bool(form.get("has_drivers_license"))
+    cleaned["drivers_license_category"] = _clean_single_line(
+        form.get("drivers_license_category", ""), max_length=16, label="License Category", errors=errors
+    )
+    if cleaned["has_drivers_license"] and not cleaned["drivers_license_category"]:
+        errors.append("License Category is required when Driver's License is enabled.")
+    if not cleaned["has_drivers_license"]:
+        cleaned["drivers_license_category"] = ""
+
+    cleaned["linkedin_url"] = _validate_url(
+        form.get("linkedin_url", ""), label="LinkedIn Profile URL", errors=errors, allowed_hosts=("linkedin.com",)
+    )
+    cleaned["github_url"] = _validate_url(
+        form.get("github_url", ""), label="GitHub URL", errors=errors, allowed_hosts=("github.com",)
+    )
+    cleaned["portfolio_url"] = _validate_url(form.get("portfolio_url", ""), label="Portfolio URL", errors=errors)
+    cleaned["gender"] = _validate_choice(
+        form.get("gender", ""), label="Gender", allowed=PROFILE_ALLOWED_GENDER, errors=errors
+    )
+    cleaned["has_disability"] = bool(form.get("has_disability"))
+    cleaned["veteran_status"] = _validate_choice(
+        form.get("veteran_status", "No"),
+        label="Veteran Status",
+        allowed=PROFILE_ALLOWED_VETERAN_STATUS,
+        errors=errors,
+    ) or "No"
+
+    cleaned["keywords"] = _clean_multiline_text(
+        form.get("keywords", ""), max_length=1500, label="Job Keywords", errors=errors
+    ) or PROFILE_BLANK_TEXT_DEFAULTS["keywords"]
+    cleaned["search_locations"] = _clean_multiline_text(
+        form.get("search_locations", ""), max_length=1000, label="Search Locations", errors=errors
+    ) or PROFILE_BLANK_TEXT_DEFAULTS["search_locations"]
+    cleaned["workplace_type"] = _validate_choice(
+        form.get("workplace_type", "all"),
+        label="Workplace Type",
+        allowed=PROFILE_ALLOWED_WORKPLACE_TYPES,
+        errors=errors,
+    ) or "all"
+    cleaned["apply_type"] = _validate_choice(
+        form.get("apply_type", "easy_apply"),
+        label="Application Type",
+        allowed=PROFILE_ALLOWED_APPLY_TYPES,
+        errors=errors,
+    ) or "easy_apply"
+    cleaned["max_applications"] = _validate_integer(
+        form.get("max_applications", "25"),
+        label="Max Applications Per Day",
+        minimum=1,
+        maximum=50,
+        errors=errors,
+        default=PROFILE_BLANK_INTEGER_DEFAULTS["max_applications"],
+    )
+    cleaned["max_network_companies_per_run"] = _validate_integer(
+        form.get("max_network_companies_per_run", "20"),
+        label="Max Companies to Follow (Per Run)",
+        minimum=1,
+        maximum=100,
+        errors=errors,
+        default=PROFILE_BLANK_INTEGER_DEFAULTS["max_network_companies_per_run"],
+    )
+    cleaned["posted_days_ago"] = _validate_integer(
+        form.get("posted_days_ago", "7"),
+        label="Posted Within (days)",
+        minimum=1,
+        maximum=30,
+        errors=errors,
+        default=PROFILE_BLANK_INTEGER_DEFAULTS["posted_days_ago"],
+    )
+    cleaned["auto_apply_enabled"] = bool(form.get("auto_apply_enabled"))
+
+    cleaned["linkedin_email"] = _validate_email(
+        form.get("linkedin_email", ""), label="LinkedIn Email", errors=errors, required=True
+    )
+    cleaned["linkedin_password"] = form.get("linkedin_password", "")
+    if cleaned["linkedin_password"] and len(str(cleaned["linkedin_password"])) < 8:
+        errors.append("LinkedIn Password must be at least 8 characters.")
+    if not cleaned["linkedin_password"] and not profile.linkedin_password_enc:
+        errors.append("LinkedIn Password is required.")
+
+    cv_file = files.get("cv_file")
+    cleaned["cv_file"] = cv_file
+    if cv_file and cv_file.filename:
+        if not allowed_file(cv_file.filename):
+            errors.append("CV file must be a PDF.")
+    elif not profile.cv_filename:
+        errors.append("CV file is required.")
+
+    return cleaned, errors
 
 
 # ─── Models ───────────────────────────────────────────────────────────────────
@@ -900,6 +1244,7 @@ def dashboard():
             return redirect(url_for("profile"))
         
         runs = BotRun.query.filter_by(user_id=user.id).order_by(BotRun.started_at.desc()).limit(20).all()
+        last_completed_run = next((run for run in runs if run.status != "running"), None)
         try:
             from bot_runner import get_active_run_ids
             active_run_ids = get_active_run_ids()
@@ -954,6 +1299,8 @@ def dashboard():
                 .limit(20)
                 .all()
             )
+            for report in missing_skills_reports:
+                report.requirements_summary = _load_requirements_summary(str(report.job_id or "").strip())
         except:
             missing_skills_reports = []
         
@@ -962,6 +1309,7 @@ def dashboard():
             user=user,
             p=p,
             runs=runs,
+            last_completed_run=last_completed_run,
             active_run_ids=active_run_ids,
             total_submitted=total_submitted,
             api_token=api_token,
@@ -990,73 +1338,23 @@ def profile():
     p = ensure_user_profile(user)
 
     if request.method == "POST":
-        p.full_name = request.form.get("full_name", "").strip()
-        p.phone = request.form.get("phone", "").strip()
-        p.location = request.form.get("location", "").strip()
-        p.graduation_year = request.form.get("graduation_year", "").strip()
-        p.experience_years = request.form.get("experience_years", "").strip()
-        p.work_auth_answer = request.form.get("work_auth_answer", "").strip()
-        p.salary_answer = request.form.get("salary_answer", "").strip()
+        cleaned, errors = _validate_profile_submission(p, request.form, request.files)
+        if errors:
+            flash("Please correct the profile form before saving.", "danger")
+            for message in errors:
+                flash(message, "danger")
+            return render_template("profile.html", user=user, p=_build_profile_form_state(p, cleaned))
 
-        # Extended profile fields
-        p.nationality = request.form.get("nationality", "").strip()
-        p.is_eu_citizen = bool(request.form.get("is_eu_citizen"))
-        p.willing_to_relocate = bool(request.form.get("willing_to_relocate"))
-        p.willing_to_work_onsite = bool(request.form.get("willing_to_work_onsite"))
-        p.willing_to_work_remote = bool(request.form.get("willing_to_work_remote"))
-        p.current_job_title = request.form.get("current_job_title", "").strip()
-        seniority = (request.form.get("job_seniority", "") or "").strip().lower()
-        p.job_seniority = seniority if seniority in {"", "junior", "senior", "other"} else ""
-        p.job_seniority_custom = request.form.get("job_seniority_custom", "").strip()
-        if p.job_seniority != "other":
-            p.job_seniority_custom = ""
-        p.networking_title = request.form.get("networking_title", "").strip()
-        p.years_management_experience = request.form.get("years_management_experience", "0").strip()
-        p.highest_education = request.form.get("highest_education", "").strip()
-        p.field_of_study = request.form.get("field_of_study", "").strip()
-        p.english_proficiency = request.form.get("english_proficiency", "Professional").strip()
-        p.languages_spoken = request.form.get("languages_spoken", "").strip()
-        p.has_drivers_license = bool(request.form.get("has_drivers_license"))
-        p.drivers_license_category = request.form.get("drivers_license_category", "").strip()
-        p.linkedin_url = request.form.get("linkedin_url", "").strip()
-        p.github_url = request.form.get("github_url", "").strip()
-        p.portfolio_url = request.form.get("portfolio_url", "").strip()
-        p.gender = request.form.get("gender", "").strip()
-        p.has_disability = bool(request.form.get("has_disability"))
-        p.veteran_status = request.form.get("veteran_status", "No").strip()
-        p.keywords = request.form.get("keywords", "").strip()
-        p.search_locations = request.form.get("search_locations", "").strip()
-        workplace_type = (request.form.get("workplace_type", "all") or "all").strip().lower()
-        p.workplace_type = workplace_type if workplace_type in {"all", "remote", "hybrid", "on_site"} else "all"
-        apply_type = (request.form.get("apply_type", "easy_apply") or "easy_apply").strip().lower()
-        p.apply_type = apply_type if apply_type in {"easy_apply", "all", "external_only"} else "easy_apply"
-        try:
-            p.max_applications = int(request.form.get("max_applications", 25))
-        except ValueError:
-            p.max_applications = 25
-        try:
-            p.max_network_companies_per_run = int(request.form.get("max_network_companies_per_run", 20))
-        except ValueError:
-            p.max_network_companies_per_run = 20
-        p.max_network_companies_per_run = max(1, min(100, p.max_network_companies_per_run))
-        try:
-            p.posted_days_ago = int(request.form.get("posted_days_ago", 7))
-        except ValueError:
-            p.posted_days_ago = 7
+        for field, value in cleaned.items():
+            if field in {"linkedin_password", "cv_file"}:
+                continue
+            setattr(p, field, value)
 
-        # LinkedIn credentials
-        li_email = request.form.get("linkedin_email", "").strip()
-        li_pw = request.form.get("linkedin_password", "")
-        if li_email:
-            p.linkedin_email = li_email
-        if li_pw:
-            p.set_linkedin_password(li_pw)
+        if cleaned["linkedin_password"]:
+            p.set_linkedin_password(str(cleaned["linkedin_password"]))
 
-        p.auto_apply_enabled = bool(request.form.get("auto_apply_enabled"))
-
-        # CV upload
-        cv_file = request.files.get("cv_file")
-        if cv_file and cv_file.filename and allowed_file(cv_file.filename):
+        cv_file = cleaned["cv_file"]
+        if cv_file and cv_file.filename:
             # Delete old file
             if p.cv_filename:
                 old = UPLOAD_FOLDER / p.cv_filename
@@ -1205,7 +1503,15 @@ def network_unfollow():
             flash("Please set your LinkedIn credentials first.", "warning")
             return redirect(url_for("profile"))
 
-        company = (request.form.get("company") or "").strip()
+        company = _clean_single_line(
+            request.form.get("company") or "",
+            max_length=120,
+            label="Company",
+            errors=[],
+        )
+        if company and not COMPANY_INPUT_RE.fullmatch(company):
+            flash("Company contains unsupported characters.", "warning")
+            return redirect(url_for("dashboard"))
 
         from bot_runner import run_network_unfollow_for_user_async
         started, message = run_network_unfollow_for_user_async(

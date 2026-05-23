@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -197,7 +197,7 @@ class LinkedInAutoApplyBot:
         if match:
             section = match.group(1)
 
-        normalized = section.lower().replace("–", "-").replace("—", "-")
+        normalized = section.lower().replace("â€“", "-").replace("â€”", "-")
         month_numbers = {
             "jan": 1,
             "feb": 2,
@@ -282,6 +282,233 @@ class LinkedInAutoApplyBot:
             or "5"
         ).strip()
         return years_text or "5"
+
+    def _profile_language_levels(self) -> dict[str, str]:
+        profile = self.config.profile
+        levels: dict[str, str] = {}
+
+        english_level = str(profile.english_proficiency or "").strip()
+        if english_level:
+            levels["english"] = english_level
+
+        raw_languages = str(profile.languages_spoken or "").strip()
+        for chunk in re.split(r"[,;\n]+", raw_languages):
+            item = chunk.strip()
+            if not item:
+                continue
+
+            language = item
+            level = ""
+            match = re.match(
+                r"(?P<language>[A-Za-z?-?][A-Za-z?-?' -]*?)\s*\((?P<level>[^)]+)\)\s*$",
+                item,
+            )
+            if not match:
+                match = re.match(
+                    r"(?P<language>[A-Za-z?-?][A-Za-z?-?' -]*?)\s*[:\-]\s*(?P<level>.+)$",
+                    item,
+                )
+            if match:
+                language = str(match.group("language") or "").strip()
+                level = str(match.group("level") or "").strip()
+
+            key = re.sub(r"[^a-z]+", "", language.lower())
+            if not key:
+                continue
+
+            if level:
+                levels[key] = level
+            else:
+                levels.setdefault(key, "")
+
+        return levels
+
+    def _extract_question_language(self, question: str) -> str | None:
+        q = str(question or "").strip().lower()
+        if not q:
+            return None
+
+        aliases = {
+            "magyar": "hungarian",
+            "deutsch": "german",
+            "espanol": "spanish",
+            "inglese": "english",
+            "italiano": "italian",
+            "francais": "french",
+            "portugues": "portuguese",
+            "nederlands": "dutch",
+            "polski": "polish",
+            "romana": "romanian",
+            "turkce": "turkish",
+            "svenska": "swedish",
+            "norsk": "norwegian",
+            "dansk": "danish",
+            "suomi": "finnish",
+            "cestina": "czech",
+            "slovencina": "slovak",
+            "hrvatski": "croatian",
+            "srpski": "serbian",
+            "slovenscina": "slovenian",
+            "ellinika": "greek",
+            "bulgarski": "bulgarian",
+        }
+        for alias, language in aliases.items():
+            if re.search(rf"\b{re.escape(alias)}\b", q):
+                return language
+
+        known_languages = [
+            "english", "hungarian", "arabic", "italian", "german", "french", "spanish",
+            "portuguese", "dutch", "polish", "romanian", "turkish", "russian", "ukrainian",
+            "czech", "slovak", "croatian", "serbian", "slovenian", "greek", "bulgarian",
+            "swedish", "norwegian", "danish", "finnish", "hebrew", "hindi", "urdu",
+            "chinese", "mandarin", "japanese", "korean",
+        ]
+        candidates = list(self._profile_language_levels().keys()) + known_languages
+        seen: set[str] = set()
+        for language in candidates:
+            if not language or language in seen:
+                continue
+            seen.add(language)
+            if re.search(rf"\b{re.escape(language)}\b", q):
+                return language
+        return None
+
+    def _language_proficiency_rank(self, text: str) -> int | None:
+        normalized = str(text or "").strip().lower()
+        if not normalized:
+            return None
+
+        ranked_patterns = (
+            (0, (
+                r"\bnone\b",
+                r"\bno knowledge\b",
+                r"\bnot applicable\b",
+                r"\bn/?a\b",
+                r"\bnessun[oa]?\b",
+                r"\bningun[ao]?\b",
+                r"\baucun[ea]?\b",
+                r"\bkein[ea]?\b",
+            )),
+            (4, (
+                r"\bnative\b",
+                r"\bbilingual\b",
+                r"\bmother[- ]tongue\b",
+                r"\bmother language\b",
+                r"\bmadrelingua\b",
+                r"\bmuttersprach",
+                r"\blangue maternelle\b",
+                r"\bnativo\b",
+                r"\bnativa\b",
+            )),
+            (3, (
+                r"\bprofessional\b",
+                r"\bfull professional\b",
+                r"\badvanced\b",
+                r"\bfluent\b",
+                r"\bc1\b",
+                r"\bc2\b",
+                r"\bprofessionnel\b",
+                r"\bprofessionale\b",
+                r"\bprofesional\b",
+                r"\bfluente\b",
+                r"\bfortgeschritten\b",
+            )),
+            (2, (
+                r"\bconversational\b",
+                r"\bintermediate\b",
+                r"\bworking proficiency\b",
+                r"\bindependent\b",
+                r"\bb1\b",
+                r"\bb2\b",
+                r"\bintermedio\b",
+                r"\bmoyen\b",
+                r"\bmittel\b",
+            )),
+            (1, (
+                r"\bbasic\b",
+                r"\bbeginner\b",
+                r"\belementary\b",
+                r"\ba0\b",
+                r"\ba1\b",
+                r"\bbase\b",
+                r"\bbasico\b",
+                r"\belementare\b",
+                r"\banfaenger\b",
+                r"\bdebutant\b",
+                r"\bprincipiante\b",
+            )),
+        )
+        for rank, patterns in ranked_patterns:
+            if any(re.search(pattern, normalized) for pattern in patterns):
+                return rank
+        return None
+
+    def _pick_language_proficiency_option(
+        self,
+        options: list[tuple[str, str]],
+        question_text: str,
+        *,
+        inferred_answer: str = "",
+    ) -> str | None:
+        requested_language = self._extract_question_language(question_text)
+        if not requested_language:
+            return None
+
+        profile_levels = self._profile_language_levels()
+        if requested_language == "english":
+            target_answer = str(
+                profile_levels.get("english") or self.config.profile.english_proficiency or ""
+            ).strip()
+        else:
+            target_answer = str(profile_levels.get(requested_language) or "").strip() or "None"
+
+        target_rank = self._language_proficiency_rank(target_answer)
+        if target_rank is None and inferred_answer:
+            target_rank = self._language_proficiency_rank(inferred_answer)
+
+        normalized_options = [
+            (val, str(txt or "").strip().lower())
+            for val, txt in options
+            if str(txt or "").strip()
+        ]
+        if not normalized_options:
+            return None
+
+        answer_tokens = [
+            tok for tok in re.findall(r"[a-zA-Z0-9#+.]+", target_answer.lower()) if len(tok) > 2
+        ]
+        for val, txt in normalized_options:
+            if answer_tokens and any(tok in txt for tok in answer_tokens[:4]):
+                return val
+
+        ranked_options: list[tuple[str, int]] = []
+        for val, txt in normalized_options:
+            option_rank = self._language_proficiency_rank(txt)
+            if option_rank is not None:
+                ranked_options.append((val, option_rank))
+
+        if target_rank is None or not ranked_options:
+            return None
+
+        exact_matches = [val for val, option_rank in ranked_options if option_rank == target_rank]
+        if exact_matches:
+            return exact_matches[0]
+
+        lower_or_equal = [item for item in ranked_options if item[1] <= target_rank]
+        if lower_or_equal:
+            best_rank = max(option_rank for _, option_rank in lower_or_equal)
+            for val, option_rank in lower_or_equal:
+                if option_rank == best_rank:
+                    return val
+
+        higher = [item for item in ranked_options if item[1] > target_rank]
+        if higher:
+            best_rank = min(option_rank for _, option_rank in higher)
+            for val, option_rank in higher:
+                if option_rank == best_rank:
+                    return val
+
+        return None
     def _fallback_numeric_value(self, input_el) -> str:
         """Return a safe numeric fallback based on field constraints.
 
@@ -615,7 +842,10 @@ class LinkedInAutoApplyBot:
             return str(profile.graduation_year or "2027")
         if any(k in q for k in field_study_kws):
             return profile.field_of_study or "Computer Science"
-        if any(k in q for k in language_proficiency_kws):
+        requested_language = self._extract_question_language(q)
+        if requested_language and any(k in q for k in language_proficiency_kws):
+            if requested_language != "english":
+                return self._profile_language_levels().get(requested_language) or "None"
             return profile.english_proficiency or "Professional"
         if any(k in q for k in languages_spoken_kws):
             return profile.languages_spoken or "English, Arabic"
@@ -657,7 +887,7 @@ class LinkedInAutoApplyBot:
     def _is_yes_token(self, text: str) -> bool:
         t = (text or "").strip().lower()
         yes_tokens = (
-            "yes", "y", "true", "si", "sâ”œÂ¼", "ja", "oui", "sim", "evet", "igen",
+            "yes", "y", "true", "si", "sÃ¢â€Å“Ã‚Â¼", "ja", "oui", "sim", "evet", "igen",
             "available", "authorized", "eligible", "consent", "accept", "agree",
             "disponibile", "autorizzato", "eligible to work",
         )
@@ -666,7 +896,7 @@ class LinkedInAutoApplyBot:
     def _is_no_token(self, text: str) -> bool:
         t = (text or "").strip().lower()
         no_tokens = (
-            "no", "n", "false", "non", "nein", "pas", "nao", "nâ”œÃºo",
+            "no", "n", "false", "non", "nein", "pas", "nao", "nÃ¢â€Å“ÃƒÂºo",
             "not authorized", "not eligible", "none", "nessuno", "ninguno",
         )
         return any(tok == t or tok in t for tok in no_tokens)
@@ -736,7 +966,7 @@ class LinkedInAutoApplyBot:
     def _login(self, page) -> None:
         page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded")
         page.wait_for_timeout(2000)
-        # Wait for any post-load redirects to settle (LinkedIn may redirect /feed/ Î“Ã¥Ã† /mynetwork/grow/)
+        # Wait for any post-load redirects to settle (LinkedIn may redirect /feed/ ÃŽâ€œÃƒÂ¥Ãƒâ€  /mynetwork/grow/)
         try:
             page.wait_for_load_state("networkidle", timeout=6000)
         except Exception:
@@ -745,7 +975,7 @@ class LinkedInAutoApplyBot:
         if self._is_authenticated(page):
             return
 
-        # Session expired Î“Ã‡Ã¶ delete stale state file and re-login
+        # Session expired ÃŽâ€œÃƒâ€¡ÃƒÂ¶ delete stale state file and re-login
         expired_in_headless = False
         if self.config.paths.browser_state_path.exists():
             self.config.paths.browser_state_path.unlink()
@@ -776,13 +1006,13 @@ class LinkedInAutoApplyBot:
             pass
 
         page.wait_for_timeout(2000)
-        # Wait for redirect chain to complete (e.g. /login Î“Ã¥Ã† /mynetwork/grow/ when session still valid)
+        # Wait for redirect chain to complete (e.g. /login ÃŽâ€œÃƒÂ¥Ãƒâ€  /mynetwork/grow/ when session still valid)
         try:
             page.wait_for_load_state("networkidle", timeout=6000)
         except Exception:
             pass
 
-        # User may have clicked a saved-account tile / session still active Î“Ã‡Ã¶ check if already logged in
+        # User may have clicked a saved-account tile / session still active ÃŽâ€œÃƒâ€¡ÃƒÂ¶ check if already logged in
         if self._is_authenticated(page):
             return
 
@@ -1251,7 +1481,7 @@ class LinkedInAutoApplyBot:
             search_url += f"&f_WT={wt_value}"
 
         # Retry navigation up to 3 times to handle transient network timeouts.
-        nav_timeout = 60_000  # 60 s Î“Ã‡Ã¶ more forgiving than the default 30 s
+        nav_timeout = 60_000  # 60 s ÃŽâ€œÃƒâ€¡ÃƒÂ¶ more forgiving than the default 30 s
         for _nav_attempt in range(3):
             try:
                 page.goto(search_url, wait_until="domcontentloaded", timeout=nav_timeout)
@@ -1264,7 +1494,7 @@ class LinkedInAutoApplyBot:
         self._human_pause()
         self._progressive_scroll(page, iterations=10)
 
-        # Broad anchor match Î“Ã‡Ã¶ job cards use multiple link patterns across LinkedIn versions
+        # Broad anchor match ÃŽâ€œÃƒâ€¡ÃƒÂ¶ job cards use multiple link patterns across LinkedIn versions
         try:
             page.wait_for_load_state("domcontentloaded", timeout=10000)
             anchors = page.query_selector_all("a")
@@ -1506,7 +1736,7 @@ class LinkedInAutoApplyBot:
         company: str = "",
         requirements: str = "",
     ) -> tuple[bool, str]:
-        # Î“Ã¶Ã‡Î“Ã¶Ã‡ Step 1: open the Easy Apply flow Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡
+        # ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ Step 1: open the Easy Apply flow ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡
         # Try navigating directly to the apply URL first (most reliable).
         apply_url = self._get_easy_apply_url(page)
         if apply_url:
@@ -1540,7 +1770,7 @@ class LinkedInAutoApplyBot:
                 return False, "Could not open Easy Apply"
             self._human_pause()
 
-        # Î“Ã¶Ã‡Î“Ã¶Ã‡ Step 2: wait for the modal/flow to actually render Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡
+        # ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ Step 2: wait for the modal/flow to actually render ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡
         # Use real wait_for_selector (up to 8 s) so we don't proceed on a blank page.
         MODAL_SELECTORS = [
             ".jobs-easy-apply-content",
@@ -1566,13 +1796,13 @@ class LinkedInAutoApplyBot:
             # One last check: if the Easy Apply button is gone the flow may have
             # opened as a full-page redirect; accept that too.
             if not page.query_selector("button#jobs-apply-button-id"):
-                flow_ready = True  # button consumed Î“Ã¥Ã† assume flow is open
+                flow_ready = True  # button consumed ÃŽâ€œÃƒÂ¥Ãƒâ€  assume flow is open
 
         if not flow_ready:
             self._dismiss_apply_flow(page)
             return False, f"Easy Apply dialog did not open after clicking | URL: {page.url}"
 
-        # Î“Ã¶Ã‡Î“Ã¶Ã‡ Handle Resume / Cover-letter file pickers Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡
+        # ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ Handle Resume / Cover-letter file pickers ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡
         # LinkedIn stores previously uploaded files as radio buttons.
         # Only upload a NEW file when there is no existing selection,
         # to avoid accumulating duplicate copies.
@@ -1679,9 +1909,9 @@ class LinkedInAutoApplyBot:
                 missing_prompts = self._collect_missing_required_prompts(page)
                 reason = f"Stuck on step {step+1}"
                 if error_texts:
-                    reason += f" Î“Ã‡Ã¶ validation errors: {'; '.join(error_texts)}"
+                    reason += f" ÃŽâ€œÃƒâ€¡ÃƒÂ¶ validation errors: {'; '.join(error_texts)}"
                 if missing_prompts:
-                    reason += f" Î“Ã‡Ã¶ missing answers: {'; '.join(missing_prompts[:4])}"
+                    reason += f" ÃŽâ€œÃƒâ€¡ÃƒÂ¶ missing answers: {'; '.join(missing_prompts[:4])}"
                 reason += f" | URL: {page.url}"
                 # Capture debug artefacts for offline diagnosis
                 ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -1719,7 +1949,7 @@ class LinkedInAutoApplyBot:
                     "[data-test-form-element-error-message], .artdeco-inline-feedback--error"
                 )
                 if not post_errors:
-                    break  # No errors Î“Ã‡Ã¶ page advanced fine.
+                    break  # No errors ÃŽâ€œÃƒâ€¡ÃƒÂ¶ page advanced fine.
 
                 # Try to fill whatever is still empty/invalid and retry click.
                 self._autofill_visible_fields(
@@ -1758,9 +1988,9 @@ class LinkedInAutoApplyBot:
                 missing_prompts = self._collect_missing_required_prompts(page)
                 reason = f"Stuck on step {step+1} (validation)"
                 if stuck_errors:
-                    reason += f" Î“Ã‡Ã¶ errors: {'; '.join(stuck_errors)}"
+                    reason += f" ÃŽâ€œÃƒâ€¡ÃƒÂ¶ errors: {'; '.join(stuck_errors)}"
                 if missing_prompts:
-                    reason += f" Î“Ã‡Ã¶ unanswered: {'; '.join(missing_prompts[:4])}"
+                    reason += f" ÃŽâ€œÃƒâ€¡ÃƒÂ¶ unanswered: {'; '.join(missing_prompts[:4])}"
                 reason += f" | URL: {page.url}"
                 ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
                 log_dir = self.config.paths.base_dir.parent.parent / "linkedin_bot" / "logs"
@@ -1983,7 +2213,7 @@ class LinkedInAutoApplyBot:
 
             value = (input_el.input_value() or "").strip()
             # Skip already-filled fields, BUT for number inputs "0" is a LinkedIn
-            # default placeholder that usually fails their own validation Î“Ã‡Ã¶ refill it.
+            # default placeholder that usually fails their own validation ÃŽâ€œÃƒâ€¡ÃƒÂ¶ refill it.
             force_fix_email = (
                 is_email_field
                 and bool(profile.email)
@@ -2052,7 +2282,7 @@ class LinkedInAutoApplyBot:
                     break
 
             # Fallback for ANY number input that was not matched above.
-            # Italian LinkedIn asks "Quanti anni ... con [Tech]?" Î“Ã‡Ã¶ label contains
+            # Italian LinkedIn asks "Quanti anni ... con [Tech]?" ÃŽâ€œÃƒâ€¡ÃƒÂ¶ label contains
             # "anni" even when technology name is not in fill_map.
             if not chosen and numeric_like_input:
                 year_kws = (
@@ -2101,7 +2331,7 @@ class LinkedInAutoApplyBot:
                     chosen = self._text_unknown_fallback(metadata)
 
             if chosen:
-                # Track Q&A for submission report Î“Ã‡Ã¶ only real visible questions.
+                # Track Q&A for submission report ÃŽâ€œÃƒâ€¡ÃƒÂ¶ only real visible questions.
                 # Skip internal/hidden field names (recaptcha, search tokens, etc.)
                 _skip_kws = ("recaptcha", "g-recaptcha", "search", "token", "csrf",
                              "hidden", "_key", "_id", "_val", "__")
@@ -2139,7 +2369,7 @@ class LinkedInAutoApplyBot:
                             input_el.focus()
                         except Exception:
                             pass
-                        # Use JS nativeInputValueSetter Î“Ã‡Ã¶ fires React synthetic onChange
+                        # Use JS nativeInputValueSetter ÃŽâ€œÃƒâ€¡ÃƒÂ¶ fires React synthetic onChange
                         set_ok = False
                         try:
                             page.evaluate("""
@@ -2240,6 +2470,12 @@ class LinkedInAutoApplyBot:
                 continue
 
             inferred_answer = self._infer_profile_answer(meta, location) or ""
+            requested_language = self._extract_question_language(meta)
+            is_language_prompt = bool(
+                requested_language and any(
+                    k in meta for k in ("language", "proficiency", "fluency", "level", "sprache", "langue", "idioma")
+                )
+            )
 
             if "authorization" in meta or "work permit" in meta or "eligible" in meta:
                 target_yes = self._is_yes_token(work_auth or "yes")
@@ -2260,15 +2496,12 @@ class LinkedInAutoApplyBot:
                     if not target_yes and self._is_no_token(txt):
                         pick_value = val
                         break
-            elif "proficiency" in meta and "english" in meta:
-                pref_order = ["professional", "advanced", "fluent", "full professional", "c2", "c1"]
-                for pref in pref_order:
-                    for val, txt in non_empty:
-                        if pref in txt:
-                            pick_value = val
-                            break
-                    if pick_value:
-                        break
+            elif is_language_prompt:
+                pick_value = self._pick_language_proficiency_option(
+                    non_empty,
+                    meta,
+                    inferred_answer=inferred_answer,
+                )
             elif (
                 "how many year" in meta
                 or "quanti anni" in meta
@@ -2278,11 +2511,6 @@ class LinkedInAutoApplyBot:
                 or ("anni" in meta and ("esperienza" in meta or "lavoro" in meta))
             ):
                 pick_value = self._pick_years_option(non_empty, profile.total_experience_years)
-            elif "language" in meta and "hungarian" in meta:
-                for val, txt in non_empty:
-                    if "none" in txt:
-                        pick_value = val
-                        break
             elif any(k in meta for k in ("privacy", "policy", "terms", "consent", "gdpr", "recruitment privacy", "statement")):
                 positive_tokens = ("agree", "accept", "consent", "acknowledge", "read", "understand", "yes", "i do")
                 for val, txt in non_empty:
@@ -2316,8 +2544,8 @@ class LinkedInAutoApplyBot:
             if not pick_value:
                 # Generic yes/no fallback: if the options are clearly yes/no, pick
                 # based on whether this is a capability/availability question.
-                # For location/commute questions the user can't guarantee Î“Ã¥Ã† pick first.
-                # For capability questions ("have you done X?") Î“Ã¥Ã† pick yes (first option).
+                # For location/commute questions the user can't guarantee ÃŽâ€œÃƒÂ¥Ãƒâ€  pick first.
+                # For capability questions ("have you done X?") ÃŽâ€œÃƒÂ¥Ãƒâ€  pick yes (first option).
                 if len(non_empty) == 2:
                     opt_texts = [t for _, t in non_empty]
                     has_yes = any(self._is_yes_token(t) for t in opt_texts)
@@ -2384,6 +2612,7 @@ class LinkedInAutoApplyBot:
                 prompt = ""
 
             choose_yes = None
+            inferred_prompt_answer = None
             if any(token in prompt for token in ["authorized", "work permit", "eligible to work"]):
                 choose_yes = self._is_yes_token(work_auth or "yes")
             elif any(k in prompt for k in ("eu citizen", "european union citizen", "eu citizenship",
@@ -2411,17 +2640,33 @@ class LinkedInAutoApplyBot:
                         choose_yes = False
 
             chosen_radio = None
-            if "proficiency" in prompt and "english" in prompt:
-                for radio in group:
+            requested_language = self._extract_question_language(prompt)
+            is_language_prompt = bool(
+                requested_language and any(
+                    k in prompt for k in ("language", "proficiency", "fluency", "level", "sprache", "langue", "idioma")
+                )
+            )
+            if is_language_prompt:
+                radio_options = []
+                for index, radio in enumerate(group):
                     try:
                         rid = radio.get_attribute("id") or ""
                         lbl = page.query_selector(f"label[for='{rid}']") if rid else None
                         txt = ((lbl.inner_text() if lbl else "") or "").strip().lower()
                     except Exception:
                         txt = ""
-                    if any(token in txt for token in ["professional", "advanced", "fluent", "c1", "c2"]):
-                        chosen_radio = radio
-                        break
+                    radio_options.append((str(index), txt))
+
+                pick_index = self._pick_language_proficiency_option(
+                    radio_options,
+                    prompt,
+                    inferred_answer=str(inferred_prompt_answer or ""),
+                )
+                if pick_index is not None:
+                    try:
+                        chosen_radio = group[int(pick_index)]
+                    except Exception:
+                        chosen_radio = None
 
             for radio in group:
                 try:
@@ -2670,7 +2915,7 @@ class LinkedInAutoApplyBot:
                 wants_no = self._is_no_token(inferred_answer)
 
                 yes_like = (
-                    "yes", "si", "sâ”œÂ¼", "ja", "oui", "sim", "true", "agree", "accept", "consent"
+                    "yes", "si", "sÃ¢â€Å“Ã‚Â¼", "ja", "oui", "sim", "true", "agree", "accept", "consent"
                 )
                 no_like = (
                     "no", "non", "nein", "falso", "false", "decline", "deny"
@@ -3127,7 +3372,7 @@ class LinkedInAutoApplyBot:
             pass
         return False
 
-    # Î“Ã¶Ã‡Î“Ã¶Ã‡ Job requirements storage (for interview prep) Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡
+    # ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ Job requirements storage (for interview prep) ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡
 
     def _save_job_requirements(self, job_id: str, title: str, company: str,
                                 job_url: str, requirements: str) -> None:
@@ -3144,12 +3389,12 @@ class LinkedInAutoApplyBot:
         except Exception:
             pass
 
-    # Î“Ã¶Ã‡Î“Ã¶Ã‡ Interview invite detection & study guide generation Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡
+    # ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ Interview invite detection & study guide generation ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡
 
     _INTERVIEW_KEYWORDS = (
         "interview", "schedule", "chat with", "call with", "speak with",
         "move forward", "next step", "advance your application", "review your profile",
-        "hiring team", "meet the team", "colloquio", "vorstellungsgesprâ”œÃ±ch",
+        "hiring team", "meet the team", "colloquio", "vorstellungsgesprÃ¢â€Å“ÃƒÂ±ch",
         "entretien", "entrevista", "congratulations", "selected",
     )
 
@@ -3323,7 +3568,7 @@ class LinkedInAutoApplyBot:
 
                     if guide:
                         guide_file = self._save_study_guide(job_id, title, company, guide)
-                        print(f"[PREP] Study guide saved Î“Ã¥Ã† {guide_file}")
+                        print(f"[PREP] Study guide saved ÃŽâ€œÃƒÂ¥Ãƒâ€  {guide_file}")
                         results.append({"sender": sender, "title": title, "company": company, "guide_file": str(guide_file)})
                     else:
                         print(f"[PREP] Could not generate guide (Ollama unavailable?). Saving blank stub.")
@@ -3337,7 +3582,7 @@ class LinkedInAutoApplyBot:
 
         return {"invites_found": len(results), "guides": results}
 
-    # Î“Ã¶Ã‡Î“Ã¶Ã‡ External ATS auto-apply Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡
+    # ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ External ATS auto-apply ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡
     _EXTERNAL_ATS_PATTERNS: dict[str, tuple[str, ...]] = {
         "greenhouse": ("boards.greenhouse.io", "job-boards.greenhouse.io"),
         "lever":      ("jobs.lever.co",),
@@ -3625,17 +3870,17 @@ class LinkedInAutoApplyBot:
             elif ats == "teamtailor":
                 ok, note = self._fill_teamtailor(ext_page)
             elif ats in ("workday", "ashby", "smartrecruiters", "bamboohr"):
-                # Complex SPAs Î“Ã‡Ã¶ fill what we can via generic helper
+                # Complex SPAs ÃŽâ€œÃƒâ€¡ÃƒÂ¶ fill what we can via generic helper
                 ok, note = self._fill_ats_dispatch(ext_page)
             else:
                 ok, note = self._fill_ats_dispatch(ext_page)
         except Exception as e:
             ok, note = False, f"ATS fill error: {e}"
 
-        # Don't close the popup Î“Ã‡Ã¶ leave it open so the user can review/finish
+        # Don't close the popup ÃŽâ€œÃƒâ€¡ÃƒÂ¶ leave it open so the user can review/finish
         return ok, f"{ats}|{note}|{external_url[:80]}"
 
-    # Î“Ã¶Ã‡Î“Ã¶Ã‡ Per-ATS fill helpers Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡
+    # ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ Per-ATS fill helpers ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡
 
     def _ats_try_fill(self, page, selector: str, value: str) -> bool:
         """Try to fill a single input on an external ATS page. Returns True if filled."""
@@ -3748,7 +3993,7 @@ class LinkedInAutoApplyBot:
         return ok, ("Teamtailor submitted" if ok else "Teamtailor submit failed")
 
 
-    # ── Per-ATS dedicated adapters ──────────────────────────────────────────
+    # â”€â”€ Per-ATS dedicated adapters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def _ats_navigate_to_apply_form(self, page) -> None:
         """On job-listing pages, click the Apply button to open the actual form."""
@@ -3819,7 +4064,7 @@ class LinkedInAutoApplyBot:
         """Lever ATS (jobs.lever.co). Navigates to /apply if needed."""
         p = self.config.profile
 
-        # Lever job listing has an "Apply" link — click it
+        # Lever job listing has an "Apply" link â€” click it
         if not page.query_selector("input[name=name], input[name=email]"):
             try:
                 apply_anchor = page.query_selector("a[href*='/apply']")
@@ -3888,7 +4133,7 @@ class LinkedInAutoApplyBot:
         return ok, ("Ashby submitted" if ok else "Ashby submit failed")
 
     def _fill_ats_smartrecruiters(self, page) -> tuple[bool, str]:
-        """SmartRecruiters ATS. Multi-step: personal info → resume → questions → submit."""
+        """SmartRecruiters ATS. Multi-step: personal info â†’ resume â†’ questions â†’ submit."""
         p = self.config.profile
         parts = p.full_name.strip().split(None, 1)
         first, last = parts[0], (parts[1] if len(parts) > 1 else "")
@@ -3957,7 +4202,7 @@ class LinkedInAutoApplyBot:
         return ok, ("BambooHR submitted" if ok else "BambooHR submit failed")
 
     def _fill_ats_workday(self, page) -> tuple[bool, str]:
-        """Workday ATS. Complex SPA — auto-fills visible fields and drives wizard."""
+        """Workday ATS. Complex SPA â€” auto-fills visible fields and drives wizard."""
         p = self.config.profile
         parts = p.full_name.strip().split(None, 1)
         first, last = parts[0], (parts[1] if len(parts) > 1 else "")
@@ -4086,7 +4331,7 @@ class LinkedInAutoApplyBot:
         return ok, ("Jobvite submitted" if ok else "Jobvite submit failed")
 
     def _fill_ats_icims(self, page) -> tuple[bool, str]:
-        """iCIMS ATS. Multi-frame, complex — drive visible steps."""
+        """iCIMS ATS. Multi-frame, complex â€” drive visible steps."""
         p = self.config.profile
         parts = p.full_name.strip().split(None, 1)
         first, last = parts[0], (parts[1] if len(parts) > 1 else "")
@@ -4127,7 +4372,7 @@ class LinkedInAutoApplyBot:
         """SAP SuccessFactors. Drive wizard steps with generic fill."""
         for _step in range(6):
             self._human_reading_pause(0.5, 1.0)
-            # SuccessFactors uses iframes on some versions — try to fill visible inputs
+            # SuccessFactors uses iframes on some versions â€” try to fill visible inputs
             ok_try, note_try = self._fill_generic_external(page)
             if ok_try:
                 return True, f"SuccessFactors submitted: {note_try}"
@@ -4193,11 +4438,11 @@ class LinkedInAutoApplyBot:
         parts = p.full_name.strip().split(None, 1)
         first, last = parts[0], (parts[1] if len(parts) > 1 else "")
 
-        # Map of (lowercase keywords in label/name/placeholder) Î“Ã¥Ã† value to fill
+        # Map of (lowercase keywords in label/name/placeholder) ÃŽâ€œÃƒÂ¥Ãƒâ€  value to fill
         fill_map: list[tuple[tuple[str, ...], str]] = [
-            (("first name", "firstname", "first_name", "nome", "vorname", "keresztnâ”œâŒv"), first),
-            (("last name", "lastname", "last_name", "surname", "cognome", "nachname", "vezetâ”œâŒknâ”œâŒv"), last),
-            (("full name", "your name", "teljes nâ”œâŒv"), p.full_name),
+            (("first name", "firstname", "first_name", "nome", "vorname", "keresztnÃ¢â€Å“Ã¢Å’Âv"), first),
+            (("last name", "lastname", "last_name", "surname", "cognome", "nachname", "vezetÃ¢â€Å“Ã¢Å’ÂknÃ¢â€Å“Ã¢Å’Âv"), last),
+            (("full name", "your name", "teljes nÃ¢â€Å“Ã¢Å’Âv"), p.full_name),
             (("email", "e-mail"), p.email),
             (("phone", "telephone", "telefono", "telefon", "mobile", "mobil"), p.phone),
             (("linkedin",), p.linkedin_url),
@@ -4416,10 +4661,10 @@ class LinkedInAutoApplyBot:
         self._persist_company_motivation_letter(title=job_title, company=company, body=letter)
         return letter
 
-    # Î“Ã¶Ã‡Î“Ã¶Ã‡ Ollama AI: answer open-text job application questions Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡
+    # ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ Ollama AI: answer open-text job application questions ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡
     _OLLAMA_URL = "http://localhost:11434/api/generate"
     _OLLAMA_MODEL = "llama3"          # change to "mistral" or any installed model
-    _OLLAMA_TIMEOUT = 8               # seconds Î“Ã‡Ã´ kept short to avoid blocking the flow
+    _OLLAMA_TIMEOUT = 8               # seconds ÃŽâ€œÃƒâ€¡ÃƒÂ´ kept short to avoid blocking the flow
 
     def _ai_pick_dropdown_option(
         self,
@@ -4442,7 +4687,7 @@ class LinkedInAutoApplyBot:
         system = (
             "You are helping fill a job application form. "
             "Given a question and a numbered list of dropdown options, "
-            "reply ONLY with the number (1, 2, 3 Î“Ã‡Âª) of the best option for the candidate. "
+            "reply ONLY with the number (1, 2, 3 ÃŽâ€œÃƒâ€¡Ã‚Âª) of the best option for the candidate. "
             "No explanation. Just the number."
         )
         user_msg = (
@@ -4569,7 +4814,7 @@ class LinkedInAutoApplyBot:
         return actions
 
     def _ai_choose_apply_action(self, page, actions: list[dict[str, Any]], *, step: int, title: str = "", company: str = "") -> str | None:
-        """Choose next Easy Apply action using deterministic priority (no AI Î“Ã‡Ã¶ saves ~12 s/step)."""
+        """Choose next Easy Apply action using deterministic priority (no AI ÃŽâ€œÃƒâ€¡ÃƒÂ¶ saves ~12 s/step)."""
         if not actions:
             return None
 
@@ -4580,7 +4825,7 @@ class LinkedInAutoApplyBot:
                 return key
         return None
 
-        fallback_choice = None  # unreachable Î“Ã‡Ã¶ kept so diff is clean
+        fallback_choice = None  # unreachable ÃŽâ€œÃƒâ€¡ÃƒÂ¶ kept so diff is clean
         for key in preferred_order:
             if any(a.get("kind") == key for a in actions):
                 fallback_choice = key
@@ -4604,7 +4849,7 @@ class LinkedInAutoApplyBot:
 
             profile = self.config.profile
 
-            # Î“Ã¶Ã‡Î“Ã¶Ã‡ Strategy 1: Message button directly on the job page Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡
+            # ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ Strategy 1: Message button directly on the job page ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡
             # LinkedIn shows "Meet the hiring team" / "People you can reach out to"
             # with a Message button right on the job page.
             poster_name_el = page.query_selector(
@@ -4730,7 +4975,7 @@ class LinkedInAutoApplyBot:
                 except Exception as e:
                     pass  # Fall through to profile-page strategy
 
-            # Î“Ã¶Ã‡Î“Ã¶Ã‡ Strategy 2: Navigate to poster's LinkedIn profile Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡
+            # ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ Strategy 2: Navigate to poster's LinkedIn profile ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡ÃŽâ€œÃƒÂ¶Ãƒâ€¡
             poster_link = poster_name_el
             if not poster_link:
                 # Try broader selectors
@@ -5128,7 +5373,7 @@ class LinkedInAutoApplyBot:
                 timeout=timeout_ms,
             )
         except Exception:
-            pass  # No spinner found Î“Ã‡Ã¶ that's fine
+            pass  # No spinner found ÃŽâ€œÃƒâ€¡ÃƒÂ¶ that's fine
 
     def _dismiss_apply_flow(self, page) -> None:
         discard = page.query_selector("button:has-text('Discard')")
@@ -5467,7 +5712,7 @@ class LinkedInAutoApplyBot:
             if count >= max_per_run:
                 break
 
-            # Ã¢â€â‚¬Ã¢â€â‚¬ Follow the company page Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+            # ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Follow the company page ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
             follow_key = f"__follow__{company.lower()}"
             if follow_key not in sent:
                 try:
@@ -5660,9 +5905,9 @@ class LinkedInAutoApplyBot:
         """Click Connect on a search-result card and confirm the modal.
 
         Returns:
-            True  Ã¢â‚¬â€ invitation sent successfully
-            False Ã¢â‚¬â€ an error occurred
-            None  Ã¢â‚¬â€ not applicable (already connected, button absent, etc.)
+            True  ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â invitation sent successfully
+            False ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â an error occurred
+            None  ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â not applicable (already connected, button absent, etc.)
         """
         try:
             # 1. Find the Connect button directly on the card
@@ -5718,7 +5963,7 @@ class LinkedInAutoApplyBot:
                         item = page.query_selector(sel)
                         if item:
                             item.click(timeout=3000)
-                            connect_btn = True  # sentinel Ã¢â‚¬â€ modal will follow
+                            connect_btn = True  # sentinel ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â modal will follow
                             break
                     except Exception:
                         pass
@@ -5747,7 +5992,7 @@ class LinkedInAutoApplyBot:
                 except Exception:
                     pass
 
-            # "How do you know X?" Ã¢â‚¬â€ dismiss; we can't auto-categorize
+            # "How do you know X?" ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â dismiss; we can't auto-categorize
             for sel in [
                 "button[aria-label='Dismiss']",
                 "button[aria-label='Close']",
@@ -5761,20 +6006,20 @@ class LinkedInAutoApplyBot:
                 except Exception:
                     pass
 
-            # No modal visible Ã¢â‚¬â€ request likely sent inline (no extra step required)
+            # No modal visible ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â request likely sent inline (no extra step required)
             return True
 
         except Exception:
             return False
 
-    # Ã¢â€â‚¬Ã¢â€â‚¬ State helpers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    # ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ State helpers ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
 
     def _write_state(self) -> None:
         self._write_json(self.config.paths.state_path, self.state)
 
     def _reached_limit(self) -> bool:
         # Count terminal outcomes so short test runs stop quickly.
-        # "skipped" = already seen / redirected Ã¢â€ â€™ also doesn't count.
+        # "skipped" = already seen / redirected ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ also doesn't count.
         processed = (
             self.stats["submitted"]
             + self.stats["dry_run"]
@@ -5782,4 +6027,8 @@ class LinkedInAutoApplyBot:
             + self.stats["failures"]
         )
         return processed >= self.limit
+
+
+
+
 

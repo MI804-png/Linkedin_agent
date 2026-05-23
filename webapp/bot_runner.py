@@ -12,7 +12,7 @@ import json
 import time
 import threading
 import importlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote_plus
 
@@ -24,6 +24,155 @@ from config import (
     CandidateProfile, BotSettings, RuntimeConfig, RuntimePaths
 )
 from bot import LinkedInAutoApplyBot
+
+
+def _stop_signal_path(user_id: int) -> Path:
+    return _user_dir(user_id) / "stop_requested.flag"
+
+
+def _set_stop_signal(user_id: int) -> None:
+    path = _stop_signal_path(user_id)
+    path.write_text(datetime.now(timezone.utc).isoformat(), encoding="utf-8")
+
+
+def _clear_stop_signal(user_id: int) -> None:
+    path = _stop_signal_path(user_id)
+    try:
+        if path.exists():
+            path.unlink()
+    except Exception:
+        pass
+
+
+def _parse_job_event_timestamp(raw_value: str) -> datetime | None:
+    text = str(raw_value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _load_run_job_events(user_id: int, started_at: datetime, finished_at: datetime | None = None) -> list[dict]:
+    jobs_file = _user_dir(user_id) / "applied_jobs.json"
+    if not jobs_file.exists():
+        return []
+
+    try:
+        raw = json.loads(jobs_file.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+    if not isinstance(raw, list):
+        return []
+
+    start_utc = started_at.replace(tzinfo=timezone.utc) if started_at.tzinfo is None else started_at.astimezone(timezone.utc)
+    start_utc -= timedelta(seconds=5)
+
+    end_utc: datetime | None = None
+    if finished_at is not None:
+        end_utc = finished_at.replace(tzinfo=timezone.utc) if finished_at.tzinfo is None else finished_at.astimezone(timezone.utc)
+        end_utc += timedelta(seconds=5)
+
+    events: list[dict] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        status = str(entry.get("status") or "").strip().lower()
+        if status not in {"submitted", "failed", "manual_required"}:
+            continue
+        parsed = _parse_job_event_timestamp(str(entry.get("timestamp") or ""))
+        if parsed is None or parsed < start_utc:
+            continue
+        if end_utc is not None and parsed > end_utc:
+            continue
+        events.append(entry)
+
+    events.sort(key=lambda item: _parse_job_event_timestamp(str(item.get("timestamp") or "")) or start_utc)
+    return events
+
+
+def _extract_job_event_summary_lines(job_events: list[dict]) -> list[str]:
+    lines: list[str] = []
+    for entry in job_events:
+        status = str(entry.get("status") or "?").strip().upper()
+        title = str(entry.get("title") or "").strip() or f"Job {str(entry.get('job_id') or '').strip()}".strip()
+        company = str(entry.get("company") or "").strip() or "-"
+        note = str(entry.get("note") or "").strip() or "-"
+        lines.append(f"[{status}] {title[:60]} @ {company[:40]} - {note}")
+
+        report = entry.get("report") if isinstance(entry.get("report"), dict) else {}
+        requirements_summary = str(report.get("requirements_summary") or "").strip()
+        if requirements_summary:
+            requirements_summary = " ".join(requirements_summary.split())
+            if len(requirements_summary) > 220:
+                requirements_summary = requirements_summary[:217].rsplit(" ", 1)[0].rstrip(" ,;:") + "..."
+            lines.append(f"[REPORT] Requirements: {requirements_summary}")
+
+        skills_ctx = report.get("skills_analysis") if isinstance(report.get("skills_analysis"), dict) else {}
+        if not skills_ctx and isinstance(entry.get("missing_skills"), dict):
+            skills_ctx = entry.get("missing_skills") or {}
+        missing = [str(skill).strip() for skill in skills_ctx.get("missing_skills", []) if str(skill).strip()]
+        if missing:
+            lines.append(f"[REPORT] Missing skills: {', '.join(missing[:6])}")
+
+    return lines
+
+
+def _store_missing_skills_reports_from_events(app_mod, user_id: int, started_at: datetime, job_events: list[dict]) -> None:
+    if not job_events:
+        return
+
+    db = app_mod.db
+    UserProfile = app_mod.UserProfile
+    MissingSkillsReport = app_mod.MissingSkillsReport
+
+    profile = UserProfile.query.filter_by(user_id=user_id).first()
+    if not profile:
+        return
+
+    for entry in job_events:
+        skills_ctx = entry.get("missing_skills") if isinstance(entry.get("missing_skills"), dict) else {}
+        report = entry.get("report") if isinstance(entry.get("report"), dict) else {}
+        if not skills_ctx and isinstance(report.get("skills_analysis"), dict):
+            skills_ctx = report.get("skills_analysis") or {}
+
+        missing_skills = [str(skill).strip() for skill in skills_ctx.get("missing_skills", []) if str(skill).strip()]
+        if not missing_skills:
+            continue
+
+        job_id = str(entry.get("job_id") or "").strip()
+        job_url = str(entry.get("job_url") or "").strip()
+        existing = (
+            MissingSkillsReport.query
+            .filter(
+                MissingSkillsReport.user_profile_id == profile.id,
+                MissingSkillsReport.job_id == job_id,
+                MissingSkillsReport.job_url == job_url,
+                MissingSkillsReport.applied_at >= started_at,
+            )
+            .first()
+        )
+        if existing:
+            continue
+
+        parsed_time = _parse_job_event_timestamp(str(entry.get("timestamp") or ""))
+        db.session.add(
+            MissingSkillsReport(
+                user_profile_id=profile.id,
+                job_id=job_id,
+                job_title=str(entry.get("title") or "").strip(),
+                company=str(entry.get("company") or "").strip(),
+                job_url=job_url,
+                missing_skills=json.dumps(missing_skills),
+                confidence=float(skills_ctx.get("match_percentage", 0) or 0),
+                applied_at=(parsed_time.replace(tzinfo=None) if parsed_time else datetime.utcnow()),
+            )
+        )
 
 
 def _run_direct_external_campaign_fallback(config: RuntimeConfig, stop_flag: threading.Event) -> dict[str, object]:
@@ -985,6 +1134,15 @@ def request_stop(run_id: int) -> None:
     flag = _stop_flags.get(run_id)
     if flag:
         flag.set()
+    try:
+        app_mod = _resolve_app_module()
+        db = app_mod.db
+        BotRun = app_mod.BotRun
+        run = db.session.get(BotRun, run_id)
+        if run:
+            _set_stop_signal(run.user_id)
+    except Exception:
+        pass
 
 
 def request_stop_now(run_id: int) -> None:
@@ -992,6 +1150,15 @@ def request_stop_now(run_id: int) -> None:
     flag = _stop_flags.get(run_id)
     if flag:
         flag.set()
+    try:
+        app_mod = _resolve_app_module()
+        db = app_mod.db
+        BotRun = app_mod.BotRun
+        run = db.session.get(BotRun, run_id)
+        if run:
+            _set_stop_signal(run.user_id)
+    except Exception:
+        pass
 
     bot = _active_bots.get(run_id)
     if bot:
@@ -1189,6 +1356,7 @@ def _do_run_watch_subprocess(app, user_id: int, run_id: int, *, apply_type_overr
     python_exe = sys.executable
     main_py = str(BOT_DIR / "main.py")
     log_file = _user_dir(user_id) / "watch_run.log"
+    _clear_stop_signal(user_id)
 
     # Pick up user settings for limit
     try:
@@ -1200,7 +1368,7 @@ def _do_run_watch_subprocess(app, user_id: int, run_id: int, *, apply_type_overr
     except Exception:
         limit = "5"
 
-    cmd = [python_exe, main_py, "--limit", limit]
+    cmd = [python_exe, main_py, "--user-id", str(user_id), "--limit", limit]
     if apply_type_override:
         cmd += ["--apply-type", apply_type_override]
     # CREATE_NEW_CONSOLE (0x10) gives the subprocess its own visible console window
@@ -1266,15 +1434,30 @@ def _do_run_watch_subprocess(app, user_id: int, run_id: int, *, apply_type_overr
             bot_run = db.session.get(BotRun, run_id)
             if bot_run:
                 final_log = log_file.read_text(encoding="utf-8", errors="replace") if log_file.exists() else ""
-                bot_run.log_snippet = final_log[-3000:]
-                bot_run.status = "done"
-                bot_run.finished_at = datetime.utcnow()
-                bot_run.submitted = final_log.count("[SUBMITTED]")
-                bot_run.skipped   = final_log.count("[SKIPPED]")
-                bot_run.failures  = final_log.count("[FAILED]")
+                finished_at = datetime.utcnow()
+                stop_requested = bot_run.status == "stopped" or _stop_signal_path(user_id).exists()
+                job_events = _load_run_job_events(user_id, bot_run.started_at, finished_at)
+                summary_lines = _extract_job_event_summary_lines(job_events)
+                combined_log = final_log.rstrip()
+                if summary_lines:
+                    summary_block = "\n".join(summary_lines)
+                    if summary_block not in combined_log:
+                        combined_log = (combined_log + "\n" + summary_block).strip() if combined_log else summary_block
+
+                bot_run.log_snippet = combined_log[-3000:]
+                bot_run.status = "stopped" if stop_requested else "done"
+                bot_run.finished_at = finished_at
+                derived_submitted = sum(1 for entry in job_events if str(entry.get("status") or "").strip().lower() == "submitted")
+                derived_failures = sum(1 for entry in job_events if str(entry.get("status") or "").strip().lower() == "failed")
+                bot_run.submitted = max(int(bot_run.submitted or 0), derived_submitted, final_log.count("[SUBMITTED]"))
+                bot_run.skipped = max(int(bot_run.skipped or 0), final_log.count("[SKIPPED]"))
+                bot_run.failures = max(int(bot_run.failures or 0), derived_failures, final_log.count("[FAILED]"))
+                _store_missing_skills_reports_from_events(app_mod, user_id, bot_run.started_at, job_events)
                 db.session.commit()
     except Exception as fin_exc:
         print(f"[WATCH FINISH ERROR] {fin_exc}", file=sys.stderr)
+    finally:
+        _clear_stop_signal(user_id)
 
 
 def _do_run(
@@ -1443,8 +1626,15 @@ def _do_run(
                 bot_run.submitted = stats.get("submitted", 0)
                 bot_run.skipped = stats.get("skipped", 0)
                 bot_run.failures = stats.get("failures", 0)
+                stop_reason = str(getattr(bot, "stop_reason", "") or "").strip()
                 if stop_flag.is_set():
                     _log(f"Stopped by user. submitted={bot_run.submitted} skipped={bot_run.skipped} failures={bot_run.failures}")
+                    bot_run.status = "stopped"
+                elif stop_reason:
+                    _log(
+                        f"Stopped automatically: {stop_reason}. "
+                        f"submitted={bot_run.submitted} skipped={bot_run.skipped} failures={bot_run.failures}"
+                    )
                     bot_run.status = "stopped"
                 else:
                     _log(f"Done. submitted={bot_run.submitted} skipped={bot_run.skipped} failures={bot_run.failures}")
@@ -1460,6 +1650,7 @@ def _do_run(
                 # Clean up stop flag
                 _stop_flags.pop(run_id, None)
                 _active_bots.pop(run_id, None)
+                _clear_stop_signal(user_id)
                 if bot_run.status == "running":
                     # Only auto-close to "done" if the user didn't stop it
                     bot_run.status = "done"
@@ -1540,6 +1731,7 @@ def run_for_user_async(
     db.session.add(run)
     db.session.commit()
     run_id = run.id
+    _clear_stop_signal(user_id)
 
     # Get the app instance directly (not current_app, which is thread-local)
     app = current_app._get_current_object()
