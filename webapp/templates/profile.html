@@ -330,13 +330,13 @@
               Easy Apply only
             </option>
             <option value="all" {{ "selected" if p.apply_type == 'all' else "" }}>
-              All (Easy Apply + External)
+              All LinkedIn jobs (Easy Apply + External Apply)
             </option>
             <option value="external_only" {{ "selected" if p.apply_type == 'external_only' else "" }}>
-              External only
+              LinkedIn external apply only
             </option>
           </select>
-          <div class="form-text">Easy Apply = LinkedIn's one-click form. External = company website.</div>
+          <div class="form-text">This setting still starts from LinkedIn job search. Use External Websites Watch on the dashboard to browse WeWorkRemotely, RemoteOK, EuropeRemoteJobs, and Jobicy directly.</div>
         </div>
         <div class="col-md-4">
           <label class="form-label fw-semibold">Posted Within (days)</label>

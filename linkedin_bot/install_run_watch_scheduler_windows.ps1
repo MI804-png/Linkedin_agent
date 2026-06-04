@@ -4,6 +4,7 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $schedulerScript = Join-Path $PSScriptRoot "run_watch_scheduler.py"
+$launcherScript = Join-Path $PSScriptRoot "start_run_watch_scheduler_windows.ps1"
 $configFile = Join-Path $PSScriptRoot ".scheduler.env"
 $configExample = Join-Path $PSScriptRoot ".scheduler.env.example"
 
@@ -20,6 +21,10 @@ if (-not (Test-Path $schedulerScript)) {
     throw "Scheduler script not found: $schedulerScript"
 }
 
+if (-not (Test-Path $launcherScript)) {
+    throw "Launcher script not found: $launcherScript"
+}
+
 if (-not (Test-Path $configFile) -and (Test-Path $configExample)) {
     Copy-Item $configExample $configFile
     Write-Host "Created $configFile from template. Fill in your dashboard email/password before relying on automatic runs." -ForegroundColor Yellow
@@ -31,7 +36,7 @@ $startupDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Star
 $startupCmd = Join-Path $startupDir "AutoApply_RunWatchScheduler.cmd"
 
 function Install-StartupLauncher {
-    $launcher = "@echo off`r`nstart `"`" `"$pythonExe`" `"$schedulerScript`" --daemon`r`n"
+    $launcher = "@echo off`r`nstart `"`" `"$pshome\powershell.exe`" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$launcherScript`"`r`n"
     Set-Content -Path $startupCmd -Value $launcher -Encoding ASCII
     Write-Host "Task Scheduler registration was unavailable. Installed Startup launcher instead:" -ForegroundColor Yellow
     Write-Host "  $startupCmd" -ForegroundColor Yellow
@@ -42,8 +47,8 @@ if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
 }
 
 $action = New-ScheduledTaskAction `
-    -Execute $pythonExe `
-    -Argument "`"$schedulerScript`" --daemon" `
+    -Execute "$pshome\powershell.exe" `
+    -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$launcherScript`"" `
     -WorkingDirectory $repoRoot
 
 $trigger = New-ScheduledTaskTrigger -AtLogOn
@@ -68,7 +73,8 @@ try {
         -Trigger $trigger `
         -Settings $settings `
         -Principal $principal `
-        -Description "Start the AutoApply Run and Watch desktop scheduler at Windows logon." | Out-Null
+        -ErrorAction Stop `
+        -Description "Ask permission, then start the AutoApply Run and Watch desktop scheduler at Windows logon." | Out-Null
 
     if (Test-Path $startupCmd) {
         Remove-Item $startupCmd -Force -ErrorAction SilentlyContinue
@@ -80,5 +86,5 @@ catch {
     Install-StartupLauncher
 }
 
-Write-Host "The scheduler will start when you log in and will check your local dashboard schedule every minute." -ForegroundColor Cyan
+Write-Host "At logon, Windows will ask whether to start the scheduler for this session." -ForegroundColor Cyan
 Write-Host "Config file: $configFile" -ForegroundColor Cyan

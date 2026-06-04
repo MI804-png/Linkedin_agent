@@ -96,6 +96,81 @@ def _load_run_job_events(user_id: int, started_at: datetime, finished_at: dateti
     return events
 
 
+def _load_run_history_entries(user_id: int, started_at: datetime, finished_at: datetime | None = None) -> list[dict]:
+    history_file = _user_dir(user_id) / "run_history.json"
+    if not history_file.exists():
+        return []
+
+    try:
+        raw = json.loads(history_file.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+    if not isinstance(raw, list):
+        return []
+
+    start_utc = started_at.replace(tzinfo=timezone.utc) if started_at.tzinfo is None else started_at.astimezone(timezone.utc)
+    start_utc -= timedelta(seconds=5)
+
+    end_utc: datetime | None = None
+    if finished_at is not None:
+        end_utc = finished_at.replace(tzinfo=timezone.utc) if finished_at.tzinfo is None else finished_at.astimezone(timezone.utc)
+        end_utc += timedelta(seconds=5)
+
+    entries: list[dict] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        parsed = _parse_job_event_timestamp(str(entry.get("started_at") or ""))
+        if parsed is None or parsed < start_utc:
+            continue
+        if end_utc is not None and parsed > end_utc:
+            continue
+        entries.append(entry)
+
+    entries.sort(key=lambda item: _parse_job_event_timestamp(str(item.get("started_at") or "")) or start_utc)
+    return entries
+
+
+def _extract_run_history_stats(entry: dict | None) -> dict[str, int]:
+    stats = entry.get("stats") if isinstance(entry, dict) else {}
+    if not isinstance(stats, dict):
+        stats = {}
+
+    def _to_int(key: str) -> int:
+        try:
+            return int(stats.get(key, 0) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    return {
+        "scanned": _to_int("scanned"),
+        "submitted": _to_int("submitted"),
+        "skipped": _to_int("skipped"),
+        "manual_required": _to_int("manual_required"),
+        "failures": _to_int("failures"),
+    }
+
+
+def _classify_watch_run_outcome(
+    *,
+    proc_returncode: int | None,
+    stop_requested: bool,
+    run_history_entry: dict | None,
+    job_events: list[dict],
+) -> tuple[str, str]:
+    if stop_requested:
+        return "stopped", "Visible Run and Watch stopped by user request."
+
+    if proc_returncode not in (None, 0):
+        return "error", f"Visible Run and Watch exited with code {proc_returncode}."
+
+    if run_history_entry is None and not job_events:
+        return "error", "Visible Run and Watch exited without recording run history or job events."
+
+    return "done", ""
+
+
 def _extract_job_event_summary_lines(job_events: list[dict]) -> list[str]:
     lines: list[str] = []
     for entry in job_events:
@@ -1380,12 +1455,16 @@ def _do_run_watch_subprocess(app, user_id: int, run_id: int, *, apply_type_overr
 
     try:
         log_fh = open(log_file, "a", encoding="utf-8")
+        launch_env = os.environ.copy()
+        launch_env["AUTOAPPLY_DISABLE_WEBAPP_SCHEDULER"] = "1"
+        launch_env.setdefault("PYTHONUNBUFFERED", "1")
         proc = subprocess.Popen(
             cmd,
             cwd=str(BOT_DIR),
             stdout=log_fh,
             stderr=subprocess.STDOUT,
             creationflags=CREATE_NEW_CONSOLE,
+            env=launch_env,
         )
     except Exception as launch_exc:
         with app.app_context():
@@ -1437,21 +1516,54 @@ def _do_run_watch_subprocess(app, user_id: int, run_id: int, *, apply_type_overr
                 finished_at = datetime.utcnow()
                 stop_requested = bot_run.status == "stopped" or _stop_signal_path(user_id).exists()
                 job_events = _load_run_job_events(user_id, bot_run.started_at, finished_at)
+                history_entries = _load_run_history_entries(user_id, bot_run.started_at, finished_at)
+                latest_history = history_entries[-1] if history_entries else None
+                history_stats = _extract_run_history_stats(latest_history)
+                outcome_status, outcome_note = _classify_watch_run_outcome(
+                    proc_returncode=proc.returncode,
+                    stop_requested=stop_requested,
+                    run_history_entry=latest_history,
+                    job_events=job_events,
+                )
                 summary_lines = _extract_job_event_summary_lines(job_events)
                 combined_log = final_log.rstrip()
+                if latest_history:
+                    run_summary = (
+                        f"[RUN] scanned={history_stats['scanned']} submitted={history_stats['submitted']} "
+                        f"skipped={history_stats['skipped']} manual_required={history_stats['manual_required']} "
+                        f"failures={history_stats['failures']}"
+                    )
+                    if run_summary not in combined_log:
+                        combined_log = (combined_log + "\n" + run_summary).strip() if combined_log else run_summary
                 if summary_lines:
                     summary_block = "\n".join(summary_lines)
                     if summary_block not in combined_log:
                         combined_log = (combined_log + "\n" + summary_block).strip() if combined_log else summary_block
+                if outcome_note and outcome_note not in combined_log:
+                    combined_log = (combined_log + "\n" + outcome_note).strip() if combined_log else outcome_note
 
                 bot_run.log_snippet = combined_log[-3000:]
-                bot_run.status = "stopped" if stop_requested else "done"
+                bot_run.status = outcome_status
                 bot_run.finished_at = finished_at
                 derived_submitted = sum(1 for entry in job_events if str(entry.get("status") or "").strip().lower() == "submitted")
                 derived_failures = sum(1 for entry in job_events if str(entry.get("status") or "").strip().lower() == "failed")
-                bot_run.submitted = max(int(bot_run.submitted or 0), derived_submitted, final_log.count("[SUBMITTED]"))
-                bot_run.skipped = max(int(bot_run.skipped or 0), final_log.count("[SKIPPED]"))
-                bot_run.failures = max(int(bot_run.failures or 0), derived_failures, final_log.count("[FAILED]"))
+                bot_run.submitted = max(
+                    int(bot_run.submitted or 0),
+                    int(history_stats["submitted"] or 0),
+                    derived_submitted,
+                    final_log.count("[SUBMITTED]"),
+                )
+                bot_run.skipped = max(
+                    int(bot_run.skipped or 0),
+                    int(history_stats["skipped"] or 0),
+                    final_log.count("[SKIPPED]"),
+                )
+                bot_run.failures = max(
+                    int(bot_run.failures or 0),
+                    int(history_stats["failures"] or 0),
+                    derived_failures,
+                    final_log.count("[FAILED]"),
+                )
                 _store_missing_skills_reports_from_events(app_mod, user_id, bot_run.started_at, job_events)
                 db.session.commit()
     except Exception as fin_exc:

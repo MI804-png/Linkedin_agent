@@ -715,6 +715,34 @@ def _coerce_string_list(values: object) -> list[str]:
     return items
 
 
+def _coerce_limited_string_list(values: object, *, max_items: int, max_length: int) -> list[str]:
+    if values is None:
+        return []
+
+    raw_values: list[object]
+    if isinstance(values, (list, tuple, set)):
+        raw_values = list(values)
+    else:
+        raw_values = re.split(r"[\n,;|]+", str(values))
+
+    cleaned_items: list[str] = []
+    seen: set[str] = set()
+
+    for value in raw_values:
+        text_value = _collapse_spaces(value)
+        if not text_value or len(text_value) > max_length:
+            continue
+        lowered = text_value.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        cleaned_items.append(text_value)
+        if len(cleaned_items) >= max_items:
+            break
+
+    return cleaned_items
+
+
 def _shorten_text(value: str, limit: int = 320) -> str:
     text_value = re.sub(r"\s+", " ", (value or "").strip())
     if len(text_value) <= limit:
@@ -753,6 +781,39 @@ def _load_requirements_summary(job_id: str) -> str:
     return ""
 
 
+def _load_requirements_metadata(job_id: str) -> dict[str, str]:
+    if not job_id or not STUDY_GUIDES_FOLDER.exists():
+        return {}
+
+    try:
+        candidates = sorted(STUDY_GUIDES_FOLDER.glob(f"{job_id}_*_requirements.txt"), reverse=True)
+    except OSError:
+        return {}
+
+    for candidate in candidates:
+        try:
+            raw_text = candidate.read_text(encoding="utf-8")
+        except OSError:
+            continue
+
+        title = ""
+        company = ""
+        url = ""
+        for line in raw_text.splitlines()[:6]:
+            stripped = line.strip()
+            if stripped.lower().startswith("title:"):
+                title = stripped.partition(":")[2].strip()
+            elif stripped.lower().startswith("company:"):
+                company = stripped.partition(":")[2].strip()
+            elif stripped.lower().startswith("url:"):
+                url = stripped.partition(":")[2].strip()
+
+        if title or company or url:
+            return {"title": title, "company": company, "job_url": url}
+
+    return {}
+
+
 def _load_shared_job_index() -> dict[str, dict]:
     if not SHARED_APPLIED_LOG.exists():
         return {}
@@ -775,6 +836,61 @@ def _load_shared_job_index() -> dict[str, dict]:
         if entry.get("report") or entry.get("missing_skills"):
             shared_index[job_id] = entry
     return shared_index
+
+
+def _load_shared_job_entries_for_user(user_id: int) -> list[dict]:
+    if not SHARED_APPLIED_LOG.exists():
+        return []
+
+    user = db.session.get(User, user_id)
+    profile = UserProfile.query.filter_by(user_id=user_id).first()
+
+    candidate_emails = {
+        str(getattr(user, "email", "") or "").strip().lower(),
+        str(getattr(profile, "linkedin_email", "") or "").strip().lower(),
+    }
+    candidate_emails.discard("")
+
+    candidate_names = {
+        str(getattr(profile, "full_name", "") or "").strip().lower(),
+    }
+    candidate_names.discard("")
+
+    if not candidate_emails and not candidate_names:
+        return []
+
+    try:
+        raw_entries = json.loads(SHARED_APPLIED_LOG.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+
+    if not isinstance(raw_entries, list):
+        return []
+
+    matches: list[dict] = []
+    for entry in raw_entries:
+        if not isinstance(entry, dict):
+            continue
+
+        snapshot = entry.get("profile_snapshot")
+        if not isinstance(snapshot, dict):
+            continue
+
+        snapshot_email = str(snapshot.get("email") or "").strip().lower()
+        snapshot_name = str(snapshot.get("full_name") or "").strip().lower()
+
+        email_match = bool(snapshot_email and snapshot_email in candidate_emails)
+        name_match = bool(
+            snapshot_name and any(
+                snapshot_name in candidate_name or candidate_name in snapshot_name
+                for candidate_name in candidate_names
+            )
+        )
+
+        if email_match or name_match:
+            matches.append(entry)
+
+    return matches
 
 
 def _normalize_skills_analysis(entry: dict, report: dict) -> dict:
@@ -865,6 +981,26 @@ def _load_recent_job_events(user_id: int, limit: int = 100) -> tuple[list[dict],
         except (json.JSONDecodeError, OSError):
             pass
 
+    existing_event_keys = {
+        (
+            str(entry.get("job_id") or "").strip(),
+            str(entry.get("timestamp") or "").strip(),
+            str(entry.get("status") or "").strip().lower(),
+        )
+        for entry in raw
+        if isinstance(entry, dict)
+    }
+    for shared_entry in _load_shared_job_entries_for_user(user_id):
+        event_key = (
+            str(shared_entry.get("job_id") or "").strip(),
+            str(shared_entry.get("timestamp") or "").strip(),
+            str(shared_entry.get("status") or "").strip().lower(),
+        )
+        if event_key in existing_event_keys:
+            continue
+        raw.append(shared_entry)
+        existing_event_keys.add(event_key)
+
     if not raw:
         return [], []
 
@@ -872,9 +1008,14 @@ def _load_recent_job_events(user_id: int, limit: int = 100) -> tuple[list[dict],
 
     submitted_jobs: list[dict] = []
     failed_jobs: list[dict] = []
+    seen_job_ids: set[str] = set()
 
     for entry in reversed(raw):
         if not isinstance(entry, dict):
+            continue
+
+        job_id = str(entry.get("job_id") or "").strip()
+        if job_id and job_id in seen_job_ids:
             continue
 
         status = (entry.get("status") or "").strip().lower()
@@ -891,13 +1032,28 @@ def _load_recent_job_events(user_id: int, limit: int = 100) -> tuple[list[dict],
                 pass
 
         fallback_entry = shared_job_index.get(str(entry.get("job_id") or "").strip())
+        file_metadata = _load_requirements_metadata(job_id)
         raw_report = _normalize_job_report(entry, fallback_entry=fallback_entry)
         record = {
             "time": time_display,
-            "title": (entry.get("title") or "").strip() or f"Job {entry.get('job_id') or ''}".strip(),
-            "company": (entry.get("company") or "").strip() or "-",
+            "title": (
+                (entry.get("title") or "").strip()
+                or str((fallback_entry or {}).get("title") or "").strip()
+                or file_metadata.get("title", "")
+                or f"Job {entry.get('job_id') or ''}".strip()
+            ),
+            "company": (
+                (entry.get("company") or "").strip()
+                or str((fallback_entry or {}).get("company") or "").strip()
+                or file_metadata.get("company", "")
+                or "-"
+            ),
             "note": (entry.get("note") or "").strip() or "-",
-            "job_url": (entry.get("job_url") or "").strip(),
+            "job_url": (
+                (entry.get("job_url") or "").strip()
+                or str((fallback_entry or {}).get("job_url") or "").strip()
+                or file_metadata.get("job_url", "")
+            ),
             "job_id": (entry.get("job_id") or "").strip(),
             "status": status,
             "report": raw_report,
@@ -917,6 +1073,9 @@ def _load_recent_job_events(user_id: int, limit: int = 100) -> tuple[list[dict],
             submitted_jobs.append(record)
         else:
             failed_jobs.append(record)
+
+        if job_id:
+            seen_job_ids.add(job_id)
 
         if len(submitted_jobs) >= limit and len(failed_jobs) >= limit:
             break
@@ -1056,6 +1215,90 @@ def api_ext_set_auto(user):
     profile.auto_apply_enabled = bool(data.get("enabled", False))
     db.session.commit()
     return jsonify({"ok": True, "auto_apply_enabled": profile.auto_apply_enabled})
+
+
+@app.route("/api/ext/apify_influencers", methods=["POST"])
+@token_required
+def api_ext_apify_influencers(user):
+    """Recommend and optionally run an Apify actor for public LinkedIn networking research."""
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({"error": "JSON object required"}), 400
+
+    profile = ensure_user_profile(user)
+    errors: list[str] = []
+    goal = _clean_single_line(data.get("goal", ""), max_length=320, label="Goal", errors=errors)
+    max_profiles = _validate_integer(
+        str(data.get("max_profiles", 25)),
+        label="Max Profiles",
+        minimum=1,
+        maximum=100,
+        errors=errors,
+        default=25,
+    )
+    actor_limit = _validate_integer(
+        str(data.get("actor_limit", 8)),
+        label="Actor Limit",
+        minimum=3,
+        maximum=15,
+        errors=errors,
+        default=8,
+    )
+
+    companies = [
+        company
+        for company in _coerce_limited_string_list(data.get("companies"), max_items=20, max_length=120)
+        if COMPANY_INPUT_RE.fullmatch(company)
+    ]
+    keywords = _coerce_limited_string_list(data.get("keywords"), max_items=12, max_length=80)
+    locations = _coerce_limited_string_list(data.get("locations"), max_items=8, max_length=80)
+    run_actor = bool(data.get("run_actor", False))
+
+    actor_input = data.get("actor_input")
+    if actor_input is not None and not isinstance(actor_input, dict):
+        errors.append("actor_input must be a JSON object when provided.")
+
+    if errors:
+        return jsonify({"error": errors[0], "errors": errors}), 400
+
+    if not goal:
+        role_label = _collapse_spaces(profile.networking_title or profile.current_job_title or "professional networking")
+        goal = f"Find public LinkedIn influencers and company voices relevant to {role_label}."
+    if not keywords:
+        keywords = (profile.search_keywords_list or profile.keywords_list)[:6]
+    if not locations:
+        locations = profile.locations_list[:5]
+
+    profile_context = {
+        "full_name": profile.full_name,
+        "current_job_title": profile.current_job_title,
+        "networking_title": profile.networking_title,
+        "keywords": (profile.search_keywords_list or profile.keywords_list)[:8],
+        "locations": profile.locations_list[:5],
+    }
+
+    try:
+        import importlib
+
+        service_module = importlib.import_module("apify_claude_service")
+        service = service_module.ApifyClaudeResearchService(BASE_DIR / "openapi.json")
+        result = service.plan_public_linkedin_research(
+            goal=goal,
+            companies=companies,
+            keywords=keywords,
+            locations=locations,
+            max_profiles=max_profiles,
+            actor_limit=actor_limit,
+            run_actor=run_actor,
+            actor_input=actor_input if isinstance(actor_input, dict) else None,
+            profile_context=profile_context,
+        )
+        return jsonify(result)
+    except Exception as exc:
+        if exc.__class__.__name__ == "ApifyClaudeServiceError":
+            return jsonify({"error": str(exc)}), 502
+        app.logger.exception("Apify influencer planning failed for user_id=%s", user.id)
+        return jsonify({"error": f"Failed to plan Apify influencer research: {exc}"}), 500
 
 
 @app.route("/api/ext/report_job", methods=["POST"])
@@ -1426,13 +1669,25 @@ def run_now():
 
         from bot_runner import run_for_user_async
         run_for_user_async(user.id, watch_browser=watch_browser)
+        profile_apply_type = (getattr(p, "apply_type", "") or "easy_apply").strip().lower()
         if watch_browser:
-            if os.environ.get("RENDER"):
+            if profile_apply_type == "external_only":
+                flash(
+                    "LinkedIn external-only run started. This mode still starts from LinkedIn job search and opens company-site apply pages when available. Use External Websites Watch to bypass LinkedIn entirely.",
+                    "info",
+                )
+            elif os.environ.get("RENDER"):
                 flash("Run and Watch started in cloud mode. Live progress appears in the dashboard log (no desktop browser window on Render).", "info")
             else:
                 flash("Bot run started in visible mode. A Chrome window should open on this machine.", "info")
         else:
-            flash("Bot run started in background mode. Check the dashboard for progress.", "info")
+            if profile_apply_type == "external_only":
+                flash(
+                    "LinkedIn external-only background run started. This mode still searches LinkedIn first; use External Websites Watch for direct external job boards.",
+                    "info",
+                )
+            else:
+                flash("Bot run started in background mode. Check the dashboard for progress.", "info")
         return redirect(url_for("dashboard"))
     except Exception as exc:
         uid = session.get("user_id")
@@ -1911,8 +2166,9 @@ ensure_schema_updates()
 cleanup_stale_runs()
 
 # Start the daily scheduler (gunicorn or direct run)
-from scheduler import start_scheduler as _start_scheduler
-_start_scheduler(app)
+if str(os.environ.get("AUTOAPPLY_DISABLE_WEBAPP_SCHEDULER", "") or "").strip().lower() not in {"1", "true", "yes", "on"}:
+    from scheduler import start_scheduler as _start_scheduler
+    _start_scheduler(app)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)

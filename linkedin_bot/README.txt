@@ -33,6 +33,7 @@ Automatic Run and Watch scheduler (desktop-only):
    AUTOAPPLY_ACCOUNT_EMAIL=your local dashboard account email
    AUTOAPPLY_ACCOUNT_PASSWORD=your local dashboard account password
    Optional: AUTOAPPLY_ACCOUNT_USER_ID=1 if you prefer selecting the local user by id
+   Optional: AUTOAPPLY_RUN_MODE=external_watch if you want the direct external-sites runner instead of LinkedIn Run and Watch
 2) Keep auto-apply enabled in the local dashboard profile and set the scheduled UTC time there.
 3) Validate the scheduler without triggering a run:
    python run_watch_scheduler.py --check
@@ -44,6 +45,7 @@ Automatic Run and Watch scheduler (desktop-only):
 How it behaves:
 - The scheduler starts when you log in on Windows or macOS.
 - It checks the local dashboard schedule every minute.
-- When the scheduled UTC minute matches, it logs into the local dashboard and triggers the existing Run and Watch action.
+- When the scheduled UTC minute matches, it logs into the local dashboard and triggers either Run and Watch or External Websites Watch, depending on AUTOAPPLY_RUN_MODE.
 - The actual search filter "within this many days" comes from the selected dashboard profile (posted_days_ago).
 - Optional immediate login-time run: set AUTOAPPLY_RUN_ON_LOGIN=1 in .scheduler.env.
+- Important: profile apply_type=external_only still means LinkedIn jobs that leave LinkedIn for the company site. It is not the same as External Websites Watch, which starts from WeWorkRemotely, RemoteOK, EuropeRemoteJobs, and Jobicy.

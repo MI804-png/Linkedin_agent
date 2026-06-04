@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import os
 import sqlite3
@@ -34,6 +35,7 @@ class SchedulerConfig:
     account_user_id: int | None
     account_email: str
     account_password: str
+    run_mode: str
     base_url: str
     db_path: Path
     python_exe: Path
@@ -74,6 +76,16 @@ def parse_bool(value: str | None, default: bool = False) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def normalize_run_mode(value: str | None) -> str:
+    cleaned = (value or "watch").strip().lower()
+    allowed = {"watch", "external_watch"}
+    if cleaned not in allowed:
+        raise ValueError(
+            f"Unsupported AUTOAPPLY_RUN_MODE={value!r}. Expected one of: {', '.join(sorted(allowed))}."
+        )
+    return cleaned
 
 
 def sanitize_secret_value(value: str | None) -> str:
@@ -121,6 +133,7 @@ def build_config(args: argparse.Namespace) -> SchedulerConfig:
         account_user_id=account_user_id,
         account_email=sanitize_secret_value(env.get("AUTOAPPLY_ACCOUNT_EMAIL")),
         account_password=sanitize_secret_value(env.get("AUTOAPPLY_ACCOUNT_PASSWORD")),
+        run_mode=normalize_run_mode(env.get("AUTOAPPLY_RUN_MODE")),
         base_url=base_url,
         db_path=Path(env.get("AUTOAPPLY_DB_PATH") or DEFAULT_DB_PATH).expanduser().resolve(),
         python_exe=resolve_python_executable(env.get("AUTOAPPLY_PYTHON_EXE")),
@@ -331,6 +344,39 @@ def start_dashboard(config: SchedulerConfig) -> None:
     raise RuntimeError(f"Dashboard did not start within {config.dashboard_start_timeout} seconds")
 
 
+def _load_local_runtime_modules():
+    os.environ["AUTOAPPLY_DISABLE_WEBAPP_SCHEDULER"] = "1"
+    if str(WEBAPP_DIR) not in sys.path:
+        sys.path.insert(0, str(WEBAPP_DIR))
+
+    app_mod = importlib.import_module("app")
+    bot_runner_mod = importlib.import_module("bot_runner")
+    return app_mod, bot_runner_mod
+
+
+def trigger_local_run(config: SchedulerConfig, user_id: int) -> int | None:
+    app_mod, bot_runner_mod = _load_local_runtime_modules()
+
+    if not dashboard_reachable(config.base_url):
+        write_log(config, "Local dashboard not reachable. Starting it now...")
+        try:
+            start_dashboard(config)
+        except Exception as exc:
+            write_log(config, f"Dashboard auto-start failed: {exc}. Continuing with direct local trigger.")
+
+    with app_mod.app.app_context():
+        if config.run_mode == "external_watch":
+            started, message = bot_runner_mod.run_direct_external_for_user_async(
+                user_id,
+                watch_browser=not bool(os.environ.get("RENDER")),
+            )
+            if not started:
+                raise RuntimeError(message)
+            return None
+
+        return bot_runner_mod.run_for_user_async(user_id, watch_browser=True)
+
+
 class DashboardClient:
     def __init__(self, base_url: str, timeout_seconds: int = 15) -> None:
         self.base_url = base_url.rstrip("/")
@@ -367,12 +413,21 @@ class DashboardClient:
         if "/profile" in final_url:
             raise RuntimeError("Dashboard redirected to Profile. Complete the local profile before scheduling Run and Watch.")
 
+    def trigger_external_watch_run(self) -> None:
+        response = self._open("/run_external_watch", form_data={})
+        final_url = response.geturl()
+        if "/login" in final_url:
+            raise RuntimeError("Lost dashboard session while triggering External Websites Watch.")
+        if "/profile" in final_url:
+            raise RuntimeError("Dashboard redirected to Profile. Complete the local profile before scheduling External Websites Watch.")
+
 
 def status_snapshot(config: SchedulerConfig) -> dict[str, object]:
     snapshot: dict[str, object] = {
         "config_path": str(DEFAULT_CONFIG_PATH),
         "db_path": str(config.db_path),
         "base_url": config.base_url,
+        "run_mode": config.run_mode,
         "target_user_id": config.account_user_id,
         "dashboard_email_configured": bool(config.account_email),
         "dashboard_password_configured": bool(config.account_password),
@@ -440,23 +495,27 @@ def maybe_trigger(config: SchedulerConfig, *, force_now: bool, startup_check: bo
 
         if not profile_is_ready(profile):
             raise RuntimeError("Profile is incomplete. Upload CV and LinkedIn credentials in the local dashboard first.")
-        if not config.account_password:
-            raise RuntimeError("AUTOAPPLY_ACCOUNT_PASSWORD is required to log into the local dashboard.")
-
-        login_email = config.account_email or str(profile["email"] or "").strip()
-        if not login_email:
-            raise RuntimeError("Could not determine dashboard login email for the selected profile.")
 
         previous_run = latest_bot_run(conn, int(profile["user_id"]))
         previous_run_id = previous_run["id"] if previous_run else None
 
-        if not dashboard_reachable(config.base_url):
-            write_log(config, "Local dashboard not reachable. Starting it now...")
-            start_dashboard(config)
+        if config.account_password:
+            login_email = config.account_email or str(profile["email"] or "").strip()
+            if not login_email:
+                raise RuntimeError("Could not determine dashboard login email for the selected profile.")
 
-        client = DashboardClient(config.base_url)
-        client.login(login_email, config.account_password)
-        client.trigger_watch_run()
+            if not dashboard_reachable(config.base_url):
+                write_log(config, "Local dashboard not reachable. Starting it now...")
+                start_dashboard(config)
+
+            client = DashboardClient(config.base_url)
+            client.login(login_email, config.account_password)
+            if config.run_mode == "external_watch":
+                client.trigger_external_watch_run()
+            else:
+                client.trigger_watch_run()
+        else:
+            trigger_local_run(config, int(profile["user_id"]))
         time.sleep(2)
 
         latest_run = latest_bot_run(conn, int(profile["user_id"]))
@@ -469,7 +528,10 @@ def maybe_trigger(config: SchedulerConfig, *, force_now: bool, startup_check: bo
 
         write_log(
             config,
-            f"Started Run and Watch for {profile['email']} via {trigger_reason}. bot_run_id={latest_run['id']}",
+            (
+                f"Started {'External Websites Watch' if config.run_mode == 'external_watch' else 'Run and Watch'} "
+                f"for {profile['email']} via {trigger_reason}. bot_run_id={latest_run['id']}"
+            ),
         )
         return 0
 
@@ -483,7 +545,8 @@ def main() -> int:
         return 0
 
     if args.daemon:
-        write_log(config, f"Run and Watch scheduler daemon started. Poll interval={config.poll_seconds}s")
+        mode_label = "External Websites Watch" if config.run_mode == "external_watch" else "Run and Watch"
+        write_log(config, f"{mode_label} scheduler daemon started. Poll interval={config.poll_seconds}s")
         first_loop = True
         while True:
             try:
