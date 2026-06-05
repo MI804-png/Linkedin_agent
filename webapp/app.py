@@ -958,8 +958,29 @@ def _normalize_job_report(entry: dict, fallback_entry: dict | None = None) -> di
     return report
 
 
-def _load_recent_job_events(user_id: int, limit: int = 100) -> tuple[list[dict], list[dict]]:
-    """Load recent submitted/failed job events from the per-user job log."""
+def _is_linkedin_similar_jobs_redirect(note: str, job_id: str) -> bool:
+    note_text = str(note or "").strip()
+    if not note_text:
+        return False
+
+    url_match = re.search(r"https://www\.linkedin\.com/jobs/collections/similar-jobs/\?\S+", note_text, re.I)
+    if not url_match:
+        return False
+
+    redirect_url = url_match.group(0)
+    if "external apply detected" not in note_text.lower():
+        return False
+
+    reference_match = re.search(r"[?&]referencejobid=(\d+)\b", redirect_url, re.I)
+    expected_job_id = str(job_id or "").strip()
+    if expected_job_id and reference_match and reference_match.group(1) != expected_job_id:
+        return False
+
+    return True
+
+
+def _load_recent_job_event_groups(user_id: int, limit: int = 100) -> dict[str, list[dict]]:
+    """Load recent job events grouped by status from the per-user job log."""
     jobs_file = USER_DATA_FOLDER / str(user_id) / "applied_jobs.json"
     archive_file = USER_DATA_FOLDER / str(user_id) / "failed_jobs_archive.json"
 
@@ -1002,12 +1023,13 @@ def _load_recent_job_events(user_id: int, limit: int = 100) -> tuple[list[dict],
         existing_event_keys.add(event_key)
 
     if not raw:
-        return [], []
+        return {"submitted": [], "failed": [], "skipped": []}
 
     shared_job_index = _load_shared_job_index()
 
     submitted_jobs: list[dict] = []
     failed_jobs: list[dict] = []
+    skipped_jobs: list[dict] = []
     seen_job_ids: set[str] = set()
 
     for entry in reversed(raw):
@@ -1019,8 +1041,12 @@ def _load_recent_job_events(user_id: int, limit: int = 100) -> tuple[list[dict],
             continue
 
         status = (entry.get("status") or "").strip().lower()
-        if status not in {"submitted", "failed", "manual_required"}:
+        if status not in {"submitted", "failed", "manual_required", "skipped"}:
             continue
+
+        effective_status = status
+        if status == "manual_required" and _is_linkedin_similar_jobs_redirect(entry.get("note") or "", job_id):
+            effective_status = "submitted"
 
         ts = (entry.get("timestamp") or "").strip()
         time_display = ts
@@ -1034,6 +1060,10 @@ def _load_recent_job_events(user_id: int, limit: int = 100) -> tuple[list[dict],
         fallback_entry = shared_job_index.get(str(entry.get("job_id") or "").strip())
         file_metadata = _load_requirements_metadata(job_id)
         raw_report = _normalize_job_report(entry, fallback_entry=fallback_entry)
+        normalized_note = (entry.get("note") or "").strip() or "-"
+        if effective_status == "submitted" and status == "manual_required":
+            normalized_note = "Easy Apply submitted (LinkedIn redirected to similar jobs)"
+
         record = {
             "time": time_display,
             "title": (
@@ -1048,14 +1078,14 @@ def _load_recent_job_events(user_id: int, limit: int = 100) -> tuple[list[dict],
                 or file_metadata.get("company", "")
                 or "-"
             ),
-            "note": (entry.get("note") or "").strip() or "-",
+            "note": normalized_note,
             "job_url": (
                 (entry.get("job_url") or "").strip()
                 or str((fallback_entry or {}).get("job_url") or "").strip()
                 or file_metadata.get("job_url", "")
             ),
             "job_id": (entry.get("job_id") or "").strip(),
-            "status": status,
+            "status": effective_status,
             "report": raw_report,
         }
 
@@ -1069,18 +1099,30 @@ def _load_recent_job_events(user_id: int, limit: int = 100) -> tuple[list[dict],
         else:
             record["hr_message_status"] = "-"
 
-        if status == "submitted":
+        if effective_status == "submitted":
             submitted_jobs.append(record)
+        elif effective_status == "skipped":
+            skipped_jobs.append(record)
         else:
             failed_jobs.append(record)
 
         if job_id:
             seen_job_ids.add(job_id)
 
-        if len(submitted_jobs) >= limit and len(failed_jobs) >= limit:
+        if len(submitted_jobs) >= limit and len(failed_jobs) >= limit and len(skipped_jobs) >= limit:
             break
 
-    return submitted_jobs[:limit], failed_jobs[:limit]
+    return {
+        "submitted": submitted_jobs[:limit],
+        "failed": failed_jobs[:limit],
+        "skipped": skipped_jobs[:limit],
+    }
+
+
+def _load_recent_job_events(user_id: int, limit: int = 100) -> tuple[list[dict], list[dict]]:
+    """Backward-compatible helper for submitted and failed job events."""
+    grouped_jobs = _load_recent_job_event_groups(user_id, limit=limit)
+    return grouped_jobs["submitted"], grouped_jobs["failed"]
 
 
 def _load_generated_letters(user_id: int, limit: int = 40) -> list[dict[str, str]]:
@@ -1522,7 +1564,10 @@ def dashboard():
             "failed_series": analytics_failed,
         }
         api_token = ensure_api_token(user)
-        submitted_jobs, failed_jobs = _load_recent_job_events(user.id, limit=25)
+        grouped_jobs = _load_recent_job_event_groups(user.id, limit=25)
+        submitted_jobs = grouped_jobs["submitted"]
+        failed_jobs = grouped_jobs["failed"]
+        skipped_jobs = grouped_jobs["skipped"]
         generated_letters = _load_generated_letters(user.id, limit=40)
 
         try:
@@ -1558,6 +1603,7 @@ def dashboard():
             api_token=api_token,
             submitted_jobs=submitted_jobs,
             failed_jobs=failed_jobs,
+            skipped_jobs=skipped_jobs,
             failed_runs=failed_runs,
             generated_letters=generated_letters,
             missing_skills_reports=missing_skills_reports,

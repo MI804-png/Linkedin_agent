@@ -42,6 +42,40 @@ WORK_REQUIREMENTS = {
 }
 
 
+SHORT_SKILL_PATTERNS = {
+    "r": (
+        r"\br language\b",
+        r"\br programming\b",
+        r"\bprogramming in r\b",
+        r"\busing r\b",
+        r"\bwith r\b",
+        r"\br/shiny\b",
+        r"\br studio\b",
+        r"\brstudio\b",
+    ),
+    "c": (
+        r"\bc language\b",
+        r"\bc programming\b",
+        r"\bprogramming in c\b",
+        r"\bwith c\b",
+        r"\bc/c\+\+\b",
+        r"\bc and c\+\+\b",
+        r"\bc developer\b",
+    ),
+}
+
+
+def _text_mentions_skill(text_clean: str, skill: str) -> bool:
+    if not text_clean or not skill:
+        return False
+
+    if skill in SHORT_SKILL_PATTERNS:
+        return any(re.search(pattern, text_clean) for pattern in SHORT_SKILL_PATTERNS[skill])
+
+    pattern = r"\b" + re.escape(skill) + r"\b"
+    return bool(re.search(pattern, text_clean))
+
+
 def extract_skills_from_text(text: str) -> List[str]:
     """
     Extract recognized skills from job description text.
@@ -57,13 +91,11 @@ def extract_skills_from_text(text: str) -> List[str]:
     
     found_skills = set()
     
-    # Look for tech skills (including variations like "Node.js", "Node", "c++", etc)
+    # Look for tech skills. Single-letter languages like R/C need explicit context
+    # so plain text such as "R&D" or "Computer Science" does not become a fake skill.
     for skill in TECH_SKILLS:
-        if skill in text_clean:
-            # Avoid matching substrings in middle of words
-            pattern = r"\b" + re.escape(skill) + r"\b"
-            if re.search(pattern, text_clean):
-                found_skills.add(skill)
+        if _text_mentions_skill(text_clean, skill):
+            found_skills.add(skill)
     
     # Look for soft skills
     for skill in SOFT_SKILLS:
@@ -100,7 +132,7 @@ def compare_skills(job_skills: Set[str], user_skills: Set[str]) -> dict:
     }
 
 
-def get_user_skills(profile, settings=None) -> Set[str]:
+def get_user_skills(profile, settings=None, cv_text: str | None = None) -> Set[str]:
     """
     Extract skills from user profile.
     Includes keywords, languages, and other profile data.
@@ -108,6 +140,8 @@ def get_user_skills(profile, settings=None) -> Set[str]:
     Args:
         profile: CandidateProfile object or similar
         settings: Optional BotSettings object to extract keywords from
+        cv_text: Optional extracted CV text used as the primary experience-backed
+            skill source for comparison.
     """
     skills = set()
     
@@ -128,15 +162,19 @@ def get_user_skills(profile, settings=None) -> Set[str]:
     # Job title
     if hasattr(profile, 'current_job_title') and profile.current_job_title:
         title_lower = profile.current_job_title.lower()
-        for skill in TECH_SKILLS:
-            if skill in title_lower:
-                skills.add(skill)
+        skills.update(extract_skills_from_text(title_lower))
     
     # Field of study
     if hasattr(profile, 'field_of_study') and profile.field_of_study:
         field_lower = profile.field_of_study.lower()
-        for skill in TECH_SKILLS | SOFT_SKILLS:
-            if skill in field_lower:
+        skills.update(extract_skills_from_text(field_lower))
+        for skill in SOFT_SKILLS:
+            if _text_mentions_skill(field_lower, skill):
                 skills.add(skill)
+
+    # CV text is the strongest evidence for which skills are actually represented
+    # in the candidate's documented experience.
+    if cv_text:
+        skills.update(extract_skills_from_text(str(cv_text)))
     
     return {s.lower() for s in skills}

@@ -630,6 +630,60 @@
   </div>
 </div>
 
+{% if skipped_jobs %}
+<div class="row g-3 mb-4">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-skip-forward-circle me-1 text-secondary"></i> Skipped Jobs</span>
+        <span class="badge bg-secondary-subtle text-secondary-emphasis">{{ skipped_jobs|length }}</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>When</th>
+              <th>Job</th>
+              <th>Company</th>
+              <th>Reason</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for job in skipped_jobs %}
+            {% set skipped_loop_idx = loop.index0 %}
+            <tr>
+              <td class="small text-nowrap">{{ job.time }}</td>
+              <td class="small">
+                {% if job.job_url %}
+                  <a href="{{ job.job_url }}" target="_blank" rel="noopener">{{ job.title }}</a>
+                {% else %}
+                  {{ job.title }}
+                {% endif %}
+              </td>
+              <td class="small">{{ job.company }}</td>
+              <td class="small text-muted">{{ job.note }}</td>
+              <td class="small">
+                <button class="btn btn-outline-secondary btn-sm py-0 px-1" type="button"
+                  data-bs-toggle="collapse" data-bs-target="#skipped-report-{{ skipped_loop_idx }}" aria-expanded="false">
+                  <i class="bi bi-list-check"></i> Report
+                </button>
+              </td>
+            </tr>
+            <tr class="collapse" id="skipped-report-{{ skipped_loop_idx }}">
+              <td colspan="5" class="bg-light p-2">
+                {{ render_job_report(job, show_uploads=true) }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% if failed_jobs %}
 <div class="row g-3 mb-4">
   <div class="col-12">
